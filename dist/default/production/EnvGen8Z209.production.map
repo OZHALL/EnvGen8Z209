@@ -1,0 +1,195 @@
+MPLINK 5.08, LINKER
+Linker Map File - Created Mon May 07 18:11:54 2018
+
+                                 Section Info
+                  Section       Type    Address   Location Size(Bytes)
+                ---------  ---------  ---------  ---------  ---------
+                   .org_0       code   0x000000    program   0x000004
+                   .cinit    romdata   0x000002    program   0x000004
+                   .org_1       code   0x000004    program   0x000464
+                   .org_2       code   0x000300    program   0x000600
+                   .org_3       code   0x000600    program   0x000400
+                   .org_4       code   0x000800    program   0x0004be
+.config_8007_BUILD/DEFAULT/PRODUCTION/ENVGEN8       code   0x008007    program   0x000002
+.config_8008_BUILD/DEFAULT/PRODUCTION/ENVGEN8       code   0x008008    program   0x000002
+.config_8009_BUILD/DEFAULT/PRODUCTION/ENVGEN8       code   0x008009    program   0x000002
+.config_800A_BUILD/DEFAULT/PRODUCTION/ENVGEN8       code   0x00800a    program   0x000002
+.config_800B_BUILD/DEFAULT/PRODUCTION/ENVGEN8       code   0x00800b    program   0x000002
+
+
+
+                              Program Memory Usage 
+                               Start         End      
+                           ---------   ---------      
+                            0x000000    0x000235      
+                            0x000300    0x000a5e      
+                            0x008007    0x00800b      
+            2458 out of 8458 program addresses used, program memory utilization is 29%
+
+
+
+                              Symbols - Sorted by Name
+                     Name    Address   Location    Storage File                     
+                ---------  ---------  ---------  --------- ---------                
+                   Attack   0x000081    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 AttackCV   0x0001c7    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              AttackCurve   0x000600    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+            AttackScaling   0x000094    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          ControlLookupHi   0x000300    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          ControlLookupLo   0x000500    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+         ControlLookupMid   0x000400    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                DACOutput   0x0000d8    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                    Decay   0x0000a0    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                  DecayCV   0x0001da    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+               DecayCurve   0x000802    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+             DecayScaling   0x0000b2    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           DoADConversion   0x000175    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              EndEnvelope   0x000029    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+        ExponentialAttack   0x00008b    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+         ExponentialDecay   0x0000a9    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+       ExponentialRelease   0x0000c6    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+         GenerateEnvelope   0x000032    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          GetAttackOffset   0x00003a    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           GetDecayOffset   0x00003e    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           GetPunchOffset   0x00003c    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+         GetReleaseOffset   0x000040    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           IncrementPhase   0x000041    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 Init_Osc   0x000a53    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+               Init_Ports   0x000a04    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                Init_SPI2   0x000a4b    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           InterruptEnter   0x000004    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+            InterruptExit   0x0000ee    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          LookupAndInterp   0x00014c    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+             LoopToAttack   0x00006c    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+ LoopingEnvelopeOrLFOMode   0x00005a    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                     Main   0x000182    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MainLoop   0x0001c1    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                   ModeCV   0x000209    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit0   0x0000f1    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit1   0x0000f8    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit2   0x000101    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit3   0x00010a    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit4   0x000113    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit5   0x00011c    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit6   0x000125    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit7   0x00012e    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit8   0x000137    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit9   0x000140    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                  MultEnd   0x000149    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+            Multiply10x10   0x0000ef    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                NextStage   0x00004b    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           NormalEnvelope   0x000073    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                    Punch   0x00009c    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                  Release   0x0000bc    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                ReleaseCV   0x0001f1    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           ReleaseScaling   0x0000cf    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+       ScannedAllChannels   0x0001c4    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+         SelectADCChannel   0x0001c2    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              SelectStage   0x000076    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+        SelectStageBranch   0x000078    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          SetEnvelopeMode   0x000216    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+               SetLFOMode   0x00021d    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+   SetLoopingEnvelopeMode   0x000229    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                SkipPunch   0x000051    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              SkipSustain   0x00005d    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+            StartEnvelope   0x00001b    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                  Sustain   0x0000b8    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                SustainCV   0x0001ed    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+         TestEnvelopeMode   0x000212    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 TestGate   0x000025    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              TestLFOMode   0x000219    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              TestLooping   0x000057    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           TestLoopingEnd   0x000063    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                TestPunch   0x00004f    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              TestTrigger   0x000017    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                   TimeCV   0x000204    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                     Wait   0x00007e    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          WriteByteHiWait   0x0000e5    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          WriteByteLoWait   0x0000ea    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+             _.org_1_017A   0x00017a    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+             _.org_1_017D   0x00017d    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+
+
+
+                              Symbols - Sorted by Address
+                     Name    Address   Location    Storage File                     
+                ---------  ---------  ---------  --------- ---------                
+           InterruptEnter   0x000004    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              TestTrigger   0x000017    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+            StartEnvelope   0x00001b    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 TestGate   0x000025    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              EndEnvelope   0x000029    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+         GenerateEnvelope   0x000032    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          GetAttackOffset   0x00003a    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           GetPunchOffset   0x00003c    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           GetDecayOffset   0x00003e    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+         GetReleaseOffset   0x000040    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           IncrementPhase   0x000041    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                NextStage   0x00004b    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                TestPunch   0x00004f    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                SkipPunch   0x000051    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              TestLooping   0x000057    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+ LoopingEnvelopeOrLFOMode   0x00005a    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              SkipSustain   0x00005d    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           TestLoopingEnd   0x000063    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+             LoopToAttack   0x00006c    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           NormalEnvelope   0x000073    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              SelectStage   0x000076    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+        SelectStageBranch   0x000078    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                     Wait   0x00007e    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                   Attack   0x000081    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+        ExponentialAttack   0x00008b    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+            AttackScaling   0x000094    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                    Punch   0x00009c    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                    Decay   0x0000a0    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+         ExponentialDecay   0x0000a9    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+             DecayScaling   0x0000b2    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                  Sustain   0x0000b8    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                  Release   0x0000bc    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+       ExponentialRelease   0x0000c6    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           ReleaseScaling   0x0000cf    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                DACOutput   0x0000d8    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          WriteByteHiWait   0x0000e5    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          WriteByteLoWait   0x0000ea    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+            InterruptExit   0x0000ee    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+            Multiply10x10   0x0000ef    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit0   0x0000f1    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit1   0x0000f8    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit2   0x000101    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit3   0x00010a    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit4   0x000113    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit5   0x00011c    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit6   0x000125    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit7   0x00012e    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit8   0x000137    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MultBit9   0x000140    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                  MultEnd   0x000149    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          LookupAndInterp   0x00014c    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+           DoADConversion   0x000175    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+             _.org_1_017A   0x00017a    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+             _.org_1_017D   0x00017d    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                     Main   0x000182    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 MainLoop   0x0001c1    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+         SelectADCChannel   0x0001c2    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+       ScannedAllChannels   0x0001c4    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 AttackCV   0x0001c7    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                  DecayCV   0x0001da    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                SustainCV   0x0001ed    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                ReleaseCV   0x0001f1    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                   TimeCV   0x000204    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                   ModeCV   0x000209    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+         TestEnvelopeMode   0x000212    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          SetEnvelopeMode   0x000216    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              TestLFOMode   0x000219    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+               SetLFOMode   0x00021d    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+   SetLoopingEnvelopeMode   0x000229    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          ControlLookupHi   0x000300    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+         ControlLookupMid   0x000400    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+          ControlLookupLo   0x000500    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+              AttackCurve   0x000600    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+               DecayCurve   0x000802    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+               Init_Ports   0x000a04    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                Init_SPI2   0x000a4b    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+                 Init_Osc   0x000a53    program     static C:\Users\OZHall\MPLABXProjects\EnvGen8Z209\EnvGen8Z209.asm
+
+
