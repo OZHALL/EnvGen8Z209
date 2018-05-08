@@ -80,7 +80,7 @@
 #define SAVETOF		0x01
 #define USEACCESSBANK	0x00 ;untested
 #define USEBSR		0x01 ;untested
-#define LEDLAST		0x07 ; last LED on pin 7 of port C
+
 
 ;================================================================
 ; begin orig ENVGEN8 code
@@ -212,6 +212,8 @@
 	RELEASE_INC_LO
 	RELEASE_INC_MID
 	RELEASE_INC_HI	
+	;Z209
+	GIE_STATE	;variable
  ENDC
 
 ; 0x70-0x7F  Common RAM - Special variables available in all banks
@@ -257,10 +259,15 @@
 #define GATE_CHANGED	CHANGES, 0	; RC0 = GATE input
 #define GATE			STATES, 0
 ; Note I use the debounced variables, not the input directly
+;Z209 defines
+;If you're doing a read-modify-write (for example a BSF), you generally want to use the LATCH.
+#define GATE_LED0 PORTB,0	; 
+#define GATE_LED1 PORTB,4
+#define LEDLAST	  PORTC,7  ; last LED on pin 7 of port C
  
 ; Output DAC assignments, mostly for readability (Bank 11)
-#define ENV_OUT_LO		DAC1REFL
-#define ENV_OUT_HI		DAC1REFH
+;#define ENV_OUT_LO		DAC1REFL
+;#define ENV_OUT_HI		DAC1REFH
  
 
 ;----------------------------------------------------------------------
@@ -295,7 +302,7 @@ InterruptEnter:
 ; This could debounce eight inputs, but I'm using only two:
 ; RC4 Trigger and RC5 Gate
 	
-; Z209 consolidate Gate & Trigger & use RC0 for channel 1
+; Z209 consolidate Gate & Trigger & use RC0 for channel 0, RC1 for channel 1
 	
 	; First, increment the debounce counters
 	movfw	DEBOUNCE_LO	
@@ -329,11 +336,13 @@ TestTrigger:
 	; Has TRIGGER changed?
 	btfss	TRIG_CHANGED
 	goto	TestGate
+	
 	; TRIGGER has changed, but has it gone high?
 ; Z209 - we need to reverse this cuz my hardware inverts the gate input
 ;	btfss	TRIGGER
 	btfsc	TRIGGER
 	goto	TestGate			; No, so skip
+	bsf	GATE_LED0
 	
 StartEnvelope:
 ; If TRIGGER has gone high, change to ATTACK stage
@@ -355,12 +364,13 @@ TestGate:
 	; Has GATE changed?
 	btfss	GATE_CHANGED
 	goto	GenerateEnvelope
+	
 	; GATE has changed, but has it gone low?
 ; Z209 - we need to reverse this cuz my hardware inverts the gate input
 ;	btfsc	GATE
 	btfss	GATE
 	goto	GenerateEnvelope	; No, so skip
-
+	bcf	GATE_LED0	
 EndEnvelope:
 ; If GATE has gone low, change to RELEASE stage
 	; Zero the accumulator
@@ -715,6 +725,7 @@ WriteByteLoWait:
 ;	return	
 ;----------------------------------------
 InterruptExit:
+    	bcf	LEDLAST
 	retfie
 
 ;------------------------------------------------------
@@ -962,11 +973,16 @@ DoADConversion:
 ; values for the DDS
 ;----------------------------------------
 Main:
-	movlb	D'1'				; Bank 1
+	movlb	D'0'				; Bank 0
 
 	call Init_Osc
 	call Init_Ports
-	
+	;Test ONLY Z209 code
+	nop
+	bsf	GATE_LED0
+	nop	; this seems to be required!!! ozh
+	bsf	GATE_LED1
+	; end test
 ;	; Set up the clock for 32MHz internal
 ;	movlw	B'11110000'			; 8MHz internal, x4 PLL
 ;	movwf	OSCCON
@@ -1113,6 +1129,9 @@ MainLoop:
 
 ; We need to do different things depending on which value we're reading:
 SelectADCChannel:
+	;Test ONLY Z209 code
+	bcf	GATE_LED0
+	; end test
 	movf	ADC_CHANNEL, w		; Get current channel
 	andlw	D'7'				; Only want 3 LSBs
 	; skip ADC until the DAC output is working with preset values - OZH
@@ -1305,6 +1324,171 @@ SetLoopingEnvelopeMode:
 	; Ok, all done
 	goto	MainLoop
 	
+    ; ***** Miscellaneous Routines*********************************************
+
+; -----------------------------------------------------------------------
+; The pins on the PIC are organized into ports.  Each port is about 8 bits wide.  However this
+; is only a general rule and your device may vary.
+
+; To setup a particular pin, we need to put values into the corresponding Analog Select
+; register, and Tri-state register.  This ensures that our pin will be an output, and that
+; it will be a digital output.
+Init_Ports:
+	
+; TODO: validate all ports
+	
+; convert working C code from DualEG (mcc generated) to ASM
+;void PIN_MANAGER_Initialize(void)
+	movlb 0
+	clrf LATA   ;    LATA = 0x00;
+	movlw 0x20
+	movwf LATB  ;    LATB = 0x20;  
+	clrf LATC   ;    LATC = 0x00; 
+
+;	movlb 0
+	movlw 0xFF
+	movwf TRISA ;    TRISA = 0xFF;
+	clrf TRISB  ;    TRISB = 0x00;
+	movlw 0x1F
+	movwf TRISC ;    TRISC = 0x1F;
+
+;   analog/digital (GPIO)
+	movlb d'30'
+	movlw 0x04
+	movwf ANSELC	;    ANSELC = 0x04;  ( why is RC2 ANALOG?)
+	movlw 0x00
+	movwf ANSELB	;    ANSELB = 0x00;
+	movlw 0xFF
+	movwf ANSELA	;    ANSELA = 0xFF;
+	
+;   weak pullup
+;	movlb d'30'
+	clrf WPUE   ;    WPUE = 0x00;
+	movlw 0xE0
+	movwf WPUB  ;    WPUB = 0xE0;
+	clrf WPUA   ;    WPUA = 0x00;
+	clrf WPUC   ;    WPUC = 0x00;
+
+;   open drain
+;	movlb d'30'
+	clrf ODCONA ;    ODCONA = 0x00;
+	clrf ODCONB ;    ODCONB = 0x00;
+	clrf ODCONC ;    ODCONC = 0x00;   
+	
+;   preserve the GIE state - global interrupt enable
+;    bool state = (unsigned char)GIE;
+	movf  INTCON,w
+	andlw b'10000000'   ;isolate bit 7
+	movwf GIE_STATE
+;    GIE = 0;	shut it off for to do the config
+	movf  INTCON,w
+	andlw b'01111111'   ;clear bit 7
+	movwf INTCON
+	
+;   PPSLOCK takes a special sequence to unlock
+	movlb d'29'
+	movlw 0x55
+	movwf PPSLOCK ;    PPSLOCK = 0x55;
+	movlw 0xAA
+	movwf PPSLOCK ;    PPSLOCK = 0xAA;
+;   unlock to make a change (note PPSLOCKED is bit 0, the only active bit in PPSLOCK byte
+	clrf PPSLOCK  ;    PPSLOCKbits.PPSLOCKED = 0x00; // unlock PPS
+
+;   set up I2C on SSP1	
+;	movlb d'29'
+	movlw 0x13
+	movwf SSP1DATPPS ;    SSP1DATPPSbits.SSP1DATPPS = 0x13;   //RC3->MSSP1:SDA1;
+	movlw 0x14
+	movwf SSP1CLKPPS ;    SSP1CLKPPSbits.SSP1CLKPPS = 0x14;   //RC4->MSSP1:SCL1;
+	
+	movlb d'30'
+	movlw 0x15
+	movwf RC3PPS ;    RC3PPS = 0x15;   //RC3->MSSP1:SDA1;
+	movlw 0x14
+	movwf RC4PPS ;    RC4PPS = 0x14;   //RC4->MSSP1:SCL1
+
+;   set up SPI on SSP2	
+	movlb d'29'
+	movlw 0x12
+	movwf SSP2DATPPS ;    SSP2DATPPSbits.SSP1DATPPS = 0x12;   //RB7->MSSP2:SPIDAT;
+	movlw 0x0E
+	movwf SSP2CLKPPS ;    SSP2CLKPPSbits.SSP1CLKPPS = 0x0E;   //RB6->MSSP2:SPICL1;
+	movlw 0x0E
+	movwf SSP2SSPPS  ;
+	
+	movlb d'30'
+	movlw 0x17
+	movwf RB7PPS ;    RB7PPS = 0x17;   //RB7->MSSP2:SPIDAT;
+	movlw 0x16
+	movwf RB6PPS ;    RB6PPS = 0x16;   //RB6->MSSP2:SPICL1;
+	
+;   PPSLOCK takes a special sequence to lock
+	movlb d'29'
+	movlw 0x55
+	movwf PPSLOCK ;    PPSLOCK = 0x55;
+	movlw 0xAA
+	movwf PPSLOCK ;    PPSLOCK = 0xAA;
+	
+	movlw 0x01
+	movwf PPSLOCK ;    PPSLOCKbits.PPSLOCKED = 0x01; // lock PPS
+;
+;    GIE = state;
+	movf  INTCON,w	    ; get the current value
+	iorwf GIE_STATE	    ; OR with isolated bit 7
+	movwf INTCON	    ; store it
+;}  
+;   set up SPI on SSP2
+	call Init_SPI2	; SPI for DAC
+	
+	movlb 0		; reset to bank 0
+	return
+	
+; convert working C code from DualEG (mcc generated) to ASM
+Init_SPI2:
+;    // Set the SPI2 module to the options selected in the User Interface
+	movlb 3
+;    // SMP Middle; CKE Idle to Active; = 0x00 MODE 1 when CKP Idle:Low, Active:High (not supported by MCP4922)
+;    // SMP Middle; CKE Active to Idle; = 0x40 MODE 0 when CKP Idle:Low, Active:High ( IS supported by MCP4922)
+;       0x20 is same as 0x40, but change clock to FOSC4 (8000kHz).  This was apparently too fast!!!	
+	movlw 0x40
+	movwf SSP2STAT   ;SSP2STAT = 0x00;
+;    
+;    // SSPEN enabled; CKP Idle:Low, Active:High; SSPM FOSC/4_SSPxADD;
+	movlw 0x2A
+	movwf SSP2CON1	;SSP2CON1 = 0x2A;
+;   
+;    // SSPADD 24; 
+	movlw 0x02     ;chg to 2 ( 1 did not work)
+	movwf SSP2ADD	;SSP2ADD = 0x02;
+	return
+	
+; convert working C code from DualEG (mcc generated) to ASM
+;void OSCILLATOR_Initialize(void)
+;{
+Init_Osc:
+	movlb d'17'
+    ;// NOSC HFINTOSC; NDIV 1; 
+    ;OSCCON1 = 0x60;
+	movlw 0x60
+	movwf OSCCON1
+    ;// CSWHOLD may proceed; SOSCPWR Low power; 
+    ;OSCCON3 = 0x00;
+    	movlw 0x00		; yes, I know I can 'clrf' this, but it may change later
+	movwf OSCCON3
+    ;// MFOEN disabled; LFOEN disabled; ADOEN disabled; SOSCEN disabled; EXTOEN disabled; HFOEN disabled; 
+    ;OSCEN = 0x00;
+     	movlw 0x00
+	movwf OSCEN
+    ;// HFFRQ 32_MHz; 
+    ;OSCFRQ = 0x06;
+     	movlw 0x06
+	movwf OSCFRQ
+    ;// HFTUN 0; 
+    ;OSCTUNE = 0x00;
+     	movlw 0x00
+	movwf OSCTUNE
+    return
+;}
 
 	
 ;-------------------------------------------------------
@@ -1313,7 +1497,8 @@ SetLoopingEnvelopeMode:
 ; The tables should be aligned to a 256-byte page boundary
 ;-------------------------------------------------------
 
- org     0x300					; Need to start at 0x100 boundary
+; org     0x300					; Need to start at 0x100 boundary
+ org     0xA00					; Need to start at 0x100 boundary
 ControlLookupHi:
 	dt	D'11', D'10', D'10', D'9', D'8', D'8', D'7', D'7'
 	dt	D'7', D'6', D'6', D'5', D'5', D'5', D'5', D'4'
@@ -1438,7 +1623,8 @@ ControlLookupLo:
 ; way up as the Attack. This way it gets the same inversion as the linear count,
 ; which makes life marginally simpler.
 ;------------------------------------------------------------------------------
- org     0x600					; Need to start at page boundary
+; org     0x600					; Need to start at page boundary
+ org     0xD00					; Need to start at page boundary
 AttackCurve:
 	dt	D'0', D'0', D'231', D'1', D'202', D'3', D'171', D'5'
 	dt	D'138', D'7', D'101', D'9', D'62', D'11', D'20', D'13'
@@ -1511,7 +1697,7 @@ AttackCurve:
 	dt	D'136', D'250', D'0', D'251', D'120', D'251', D'239', D'251'
 	dt	D'101', D'252', D'219', D'252', D'80', D'253', D'196', D'253'
 	dt	D'55', D'254', D'170', D'254', D'28', D'255', D'142', D'255'
- org     0x800					; Need to start at page boundary
+ org     0xF00					; Need to start at page boundary
 	; One extra to make interp simple
 	dt	D'255', D'255'
 
@@ -1596,170 +1782,4 @@ DecayCurve:
 ; end orig ENVGEN8 code
 ;================================================================ 
 
-    ; ***** Miscellaneous Routines*********************************************
-
-; -----------------------------------------------------------------------
-; The pins on the PIC are organized into ports.  Each port is about 8 bits wide.  However this
-; is only a general rule and your device may vary.
-
-; To setup a particular pin, we need to put values into the corresponding Analog Select
-; register, and Tri-state register.  This ensures that our pin will be an output, and that
-; it will be a digital output.
-	cblock
-	    GIE_STATE	;variable
-	endc
-Init_Ports
-; convert working C code from DualEG (mcc generated) to ASM
-;void PIN_MANAGER_Initialize(void)
-	movlb 0
-	clrf LATA   ;    LATA = 0x00;
-	movlw 0x20
-	movwf LATB  ;    LATB = 0x20;  
-	clrf LATC   ;    LATC = 0x00; 
-
-;	movlb 0
-	movlw 0xFF
-	movwf TRISA ;    TRISA = 0xFF;
-	clrf TRISB  ;    TRISB = 0x00;
-	movlw 0x1F
-	movwf TRISC ;    TRISC = 0x1F;
-
-;   analog/digital (GPIO)
-	movlb d'30'
-	movlw 0x04
-	movwf ANSELC	;    ANSELC = 0x04;
-	movlw 0x00
-	movwf ANSELB	;    ANSELB = 0x00;
-	movlw 0xFF
-	movwf ANSELA	;    ANSELA = 0xFF;
-	
-;   weak pullup
-;	movlb d'30'
-	clrf WPUE   ;    WPUE = 0x00;
-	movlw 0xE0
-	movwf WPUB  ;    WPUB = 0xE0;
-	clrf WPUA   ;    WPUA = 0x00;
-	clrf WPUC   ;    WPUC = 0x00;
-
-;   open drain
-;	movlb d'30'
-	clrf ODCONA ;    ODCONA = 0x00;
-	clrf ODCONB ;    ODCONB = 0x00;
-	clrf ODCONC ;    ODCONC = 0x00;   
-	
-;   preserve the GIE state - global interrupt enable
-;    bool state = (unsigned char)GIE;
-	movf  INTCON,w
-	andlw b'10000000'   ;isolate bit 7
-	movwf GIE_STATE
-;    GIE = 0;	shut it off for to do the config
-	movf  INTCON,w
-	andlw b'01111111'   ;clear bit 7
-	movwf INTCON
-	
-;   PPSLOCK takes a special sequence to unlock
-	movlb d'29'
-	movlw 0x55
-	movwf PPSLOCK ;    PPSLOCK = 0x55;
-	movlw 0xAA
-	movwf PPSLOCK ;    PPSLOCK = 0xAA;
-;   unlock to make a change (note PPSLOCKED is bit 0, the only active bit in PPSLOCK byte
-	clrf PPSLOCK  ;    PPSLOCKbits.PPSLOCKED = 0x00; // unlock PPS
-
-;   set up I2C on SSP1	
-;	movlb d'29'
-	movlw 0x13
-	movwf SSP1DATPPS ;    SSP1DATPPSbits.SSP1DATPPS = 0x13;   //RC3->MSSP1:SDA1;
-	movlw 0x14
-	movwf SSP1CLKPPS ;    SSP1CLKPPSbits.SSP1CLKPPS = 0x14;   //RC4->MSSP1:SCL1;
-	
-	movlb d'30'
-	movlw 0x15
-	movwf RC3PPS ;    RC3PPS = 0x15;   //RC3->MSSP1:SDA1;
-	movlw 0x14
-	movwf RC4PPS ;    RC4PPS = 0x14;   //RC4->MSSP1:SCL1
-
-;   set up SPI on SSP2	
-	movlb d'29'
-	movlw 0x12
-	movwf SSP2DATPPS ;    SSP2DATPPSbits.SSP1DATPPS = 0x12;   //RB7->MSSP2:SPIDAT;
-	movlw 0x0E
-	movwf SSP2CLKPPS ;    SSP2CLKPPSbits.SSP1CLKPPS = 0x0E;   //RB6->MSSP2:SPICL1;
-	movlw 0x0E
-	movwf SSP2SSPPS  ;
-	
-	movlb d'30'
-	movlw 0x17
-	movwf RB7PPS ;    RB7PPS = 0x17;   //RB7->MSSP2:SPIDAT;
-	movlw 0x16
-	movwf RB6PPS ;    RB6PPS = 0x16;   //RB6->MSSP2:SPICL1;
-	
-;   PPSLOCK takes a special sequence to lock
-	movlb d'29'
-	movlw 0x55
-	movwf PPSLOCK ;    PPSLOCK = 0x55;
-	movlw 0xAA
-	movwf PPSLOCK ;    PPSLOCK = 0xAA;
-	
-	movlw 0x01
-	movwf PPSLOCK ;    PPSLOCKbits.PPSLOCKED = 0x01; // lock PPS
-;
-;    GIE = state;
-	movf  INTCON,w	    ; get the current value
-	iorwf GIE_STATE	    ; OR with isolated bit 7
-	movwf INTCON	    ; store it
-;}  
-;   set up SPI on SSP2
-	call Init_SPI2	; SPI for DAC
-	
-	movlb 0		; reset to bank 0
-	return
-	
-; convert working C code from DualEG (mcc generated) to ASM
-Init_SPI2
-;    // Set the SPI2 module to the options selected in the User Interface
-	movlb 3
-;    // SMP Middle; CKE Idle to Active; = 0x00 MODE 1 when CKP Idle:Low, Active:High (not supported by MCP4922)
-;    // SMP Middle; CKE Active to Idle; = 0x40 MODE 0 when CKP Idle:Low, Active:High ( IS supported by MCP4922)
-;       0x20 is same as 0x40, but change clock to FOSC4 (8000kHz).  This was apparently too fast!!!	
-	movlw 0x40
-	movwf SSP2STAT   ;SSP2STAT = 0x00;
-;    
-;    // SSPEN enabled; CKP Idle:Low, Active:High; SSPM FOSC/4_SSPxADD;
-	movlw 0x2A
-	movwf SSP2CON1	;SSP2CON1 = 0x2A;
-;   
-;    // SSPADD 24; 
-	movlw 0x02     ;chg to 2 ( 1 did not work)
-	movwf SSP2ADD	;SSP2ADD = 0x02;
-	return
-	
-; convert working C code from DualEG (mcc generated) to ASM
-;void OSCILLATOR_Initialize(void)
-;{
-Init_Osc
-	movlb d'17'
-    ;// NOSC HFINTOSC; NDIV 1; 
-    ;OSCCON1 = 0x60;
-	movlw 0x60
-	movwf OSCCON1
-    ;// CSWHOLD may proceed; SOSCPWR Low power; 
-    ;OSCCON3 = 0x00;
-    	movlw 0x00		; yes, I know I can 'clrf' this, but it may change later
-	movwf OSCCON3
-    ;// MFOEN disabled; LFOEN disabled; ADOEN disabled; SOSCEN disabled; EXTOEN disabled; HFOEN disabled; 
-    ;OSCEN = 0x00;
-     	movlw 0x00
-	movwf OSCEN
-    ;// HFFRQ 32_MHz; 
-    ;OSCFRQ = 0x06;
-     	movlw 0x06
-	movwf OSCFRQ
-    ;// HFTUN 0; 
-    ;OSCTUNE = 0x00;
-     	movlw 0x00
-	movwf OSCTUNE
-    return
-;}
-
-    END
+	END
