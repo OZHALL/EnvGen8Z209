@@ -15,7 +15,7 @@
 ;2018-05-06 ozh - debug outputting to both DAC0 and DAC1  
 ;2018-05-07 ozh - hand optimize where I can
 ;2018-05-07 ozh - add EnvGen8 code and integrate with my hardware config and DAC output
-    
+;2018-05-08 ozh - got the interrupt timer working.  I press the gate & LED 1 flashes!!!    
 ; PIC16F18855 Configuration Bit Settings
 
 ; Assembly source line config statements
@@ -53,7 +53,7 @@
  	; The 12 bit output level
 ;	OUTPUT_HI
 ;	OUTPUT_LO
-;	DACNUMBER
+;	DAC_NUMBER
 ; ENDC
  
 ;-------------------------------------
@@ -229,7 +229,8 @@
 	; The 12 bit output level
 	OUTPUT_HI
 	OUTPUT_LO
-	DACNUMBER
+	DAC_NUMBER
+	TEST_COUNTER
  ENDC
 
 ;-------------------------------------
@@ -261,9 +262,9 @@
 ; Note I use the debounced variables, not the input directly
 ;Z209 defines
 ;If you're doing a read-modify-write (for example a BSF), you generally want to use the LATCH.
-#define GATE_LED0 PORTB,0	; 
-#define GATE_LED1 PORTB,4
-#define LEDLAST	  PORTC,7  ; last LED on pin 7 of port C
+#define GATE_LED0 LATB,0	; 
+#define GATE_LED1 LATB,4
+#define LEDLAST	  LATC,7  ; last LED on pin 7 of port C
  
 ; Output DAC assignments, mostly for readability (Bank 11)
 ;#define ENV_OUT_LO		DAC1REFL
@@ -286,10 +287,14 @@
 
 InterruptEnter:
 ; Sample rate timebase at 31.25KHz
-	movlb	D'0'				; Bank 0
-	btfss	PIR1, TMR2IF		; Check if TMR2 interrupt
+	movlb	D'14'				; Bank 14
+	btfss	PIR4, TMR2IF			; Check if TMR2 interrupt
 	goto	InterruptExit
-	bcf		PIR1, TMR2IF		; Clear TMR2 interrupt flag
+	bcf	PIR4, TMR2IF			; Clear TMR2 interrupt flag
+
+	movlb	D'0'				; Bank 0
+	
+	bsf	LEDLAST	    ; Z209
 	
 	; If we're in LFO mode, we can ignore the GATE and TRIGGER inputs
 	btfsc	LFO_MODE
@@ -678,7 +683,7 @@ DACOutput:
 	movlw DAC0	; TODO: change this hardcoded DAC0 to a variable
         ; pass in the DAC # (in bit 7) via 
 	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
-        movwf DACNUMBER     
+        movwf DAC_NUMBER     
 
 	; output the OUTPUT_HI and OUTPUT_LO to the DAC# (0 or 1) specified in W
 	movlb 0		; PORTB
@@ -696,7 +701,7 @@ DACOutput:
 	andlw 0x0F	; we will only want least significant4 bits
 	;for DAC0 or DAC1 - dac # (bit 7) 
 	;                 bit 15 A/B: DACA or DACB Selection bit
-	iorwf DACNUMBER,0 ; clr or set bit based on DAC.  0=save into W 
+	iorwf DAC_NUMBER,0 ; clr or set bit based on DAC.  0=save into W 
 	; this works, but let's do all of this at the beginning
 ;	;               ; 0 = unbuffered - bit 14  VREF Input Buffer Control bit
 ;	iorlw BIT5	; set gain of 1 - bit 13 Output Gain Selection bit
@@ -725,6 +730,7 @@ WriteByteLoWait:
 ;	return	
 ;----------------------------------------
 InterruptExit:
+    	movlb D'0'		; PORTB
     	bcf	LEDLAST
 	retfie
 
@@ -978,10 +984,9 @@ Main:
 	call Init_Osc
 	call Init_Ports
 	;Test ONLY Z209 code
-	nop
-	bsf	GATE_LED0
+	bcf	GATE_LED0
 	nop	; this seems to be required!!! ozh
-	bsf	GATE_LED1
+	bcf	GATE_LED1
 	; end test
 ;	; Set up the clock for 32MHz internal
 ;	movlw	B'11110000'			; 8MHz internal, x4 PLL
@@ -993,22 +998,24 @@ Main:
 ;	movlw   b'111011'			; RC2 Output, all others inputs
 ;	movwf   TRISC
 ;
-; TODO: review this setup
 ;
-	; Set up the interrupts
-	bsf		INTCON, GIE			; Enable interrupts
-	bsf		INTCON, PEIE		; Enable peripheral interrupts
-;	bsf		INTCON, IOCIE		; Enable interrupt-on-change
-	bsf		PIE1, TMR2IE		; Enable the output sample rate interrupt
+	; Set up the interrupts (INTCON is a SFR available all banks)
+	bsf	INTCON, GIE		; Enable interrupts
+	bsf	INTCON, PEIE		; Enable peripheral interrupts
+;	bsf	INTCON, IOCIE		; Enable interrupt-on-change
+	movlb	D'14'			; Bank 14	
+	bsf	PIE4, TMR2IE		; Enable the output sample rate interrupt
 	
-; Set up Timer2 as sample rate timebase
-	movlb	D'0'				; Bank 0		
+	; Set up Timer2 as sample rate timebase
+	; Z209 - this code is reviewed against the PIC16F18855 datasheet, but unproven as of 5/8/18
+	movlb	D'5'				; Bank 5		
 	movlw	B'00000001'			
 	movwf	T2CLKCON			; Fosc/4 = 8MHz clock for timer
 	movlw	B'00110000'			; Prescale /8 = 1MHz, Postscale /1, Tmr Off
 	movwf	T2CON					
 	movlw	0x1F				; Set up Timer2 period register (/32)
-	movwf	T2PR				; Interrupts at 1MHz/32 = 31.25KHz
+	; T2PR = 28Dh same as PR2
+	movwf	PR2				; Interrupts at 1MHz/32 = 31.25KHz
 
 ; see Init_Ports for this configuration for Z209
 ; Set up Analog-to-digital convertor and ADC inputs
@@ -1119,19 +1126,26 @@ Main:
 ; Ok, that's all the setup done, let's get going
 
 	; Start outputting signals	
-	movlb	D'0'				; Bank 0	
-	bsf		T2CON, TMR2ON		; Turn timer 2 on	
+	movlb	D'5'				; Bank 5	
+	bsf	T2CON, TMR2ON		; Turn timer 2 on	
 
 
 MainLoop:
 	; Change to next A/D channel
-	incf	ADC_CHANNEL, f
-
+	incfsz	ADC_CHANNEL, f
+	goto	SelectADCChannel
+	;Test ONLY Z209 code	
+	incfsz	TEST_COUNTER, f
+	goto	SelectADCChannel
+	
+	;bcf	GATE_LED0
+	movlw	BIT2
+	xorwf	LATB,f		; XOR toggles the and bit set in prev value
+	; end test
+	
 ; We need to do different things depending on which value we're reading:
 SelectADCChannel:
-	;Test ONLY Z209 code
-	bcf	GATE_LED0
-	; end test
+
 	movf	ADC_CHANNEL, w		; Get current channel
 	andlw	D'7'				; Only want 3 LSBs
 	; skip ADC until the DAC output is working with preset values - OZH
@@ -1148,7 +1162,7 @@ SelectADCChannel:
 ScannedAllChannels:
 	; Reset ADC channel 
 	movlw	D'7'
-	movwf	ADC_CHANNEL
+	;movwf	ADC_CHANNEL
 	goto	MainLoop
 
 
