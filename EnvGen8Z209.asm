@@ -18,6 +18,8 @@
 ;2018-05-08 ozh - got the interrupt timer working.  I press the gate & LED 1 flashes!!! 
 ;2018-05-08 ozh - I've got an envelope of sorts, but the output is goofy.  Multiple ramps per stage
 ;		    I think this is a "Dacout" impedance mismatch.
+;		    Fixed this with 1) change 16 bit value to 12 bits
+;		    Skip the "invert results" stage
 	
 	
 ; PIC16F18855 Configuration Bit Settings
@@ -677,9 +679,11 @@ ReleaseScaling:
 	comf	START_HI, w
 	addwfc	MULT_OUT_HI, w
 	movwf	OUTPUT_HI
+	
+	; Z209 don't need to invert
 	; Invert the result
-	comf	OUTPUT_HI,f
-	comf	OUTPUT_LO,f
+	;comf	OUTPUT_HI,f
+	;comf	OUTPUT_LO,f
 
 ; Set DAC Output
 ;---------------------------------------
@@ -706,10 +710,16 @@ DACOutput:
 ;	rlf	OUTPUT_LO, f  ; again	
 ;	rlf	OUTPUT_HI, f	
 
-	; this makes no sense, but I tried it as a data point
-;	clrc			; clear carry flag = 0 
-;	rrf	OUTPUT_HI, f  ; move carry into msb and lsb into carry
-;	rrf	OUTPUT_LO, f  ; move cary into msb and lsb into carry	
+	; take 16 bits down to 12 bits
+	clrc			; clear carry flag = 0 
+	rrf	OUTPUT_HI, f  ; move carry into msb and lsb into carry
+	rrf	OUTPUT_LO, f  ; move cary into msb and lsb into carry	
+	rrf	OUTPUT_HI, f  ; move carry into msb and lsb into carry
+	rrf	OUTPUT_LO, f  ; move cary into msb and lsb int
+	rrf	OUTPUT_HI, f  ; move carry into msb and lsb into carry
+	rrf	OUTPUT_LO, f  ; move cary into msb and lsb int
+	rrf	OUTPUT_HI, f  ; move carry into msb and lsb into carry
+	rrf	OUTPUT_LO, f  ; move cary into msb and lsb int
 	
 	movlw DAC0	; TODO: change this hardcoded DAC0 to a variable
         ; pass in the DAC # (in bit 7) via 
@@ -728,8 +738,8 @@ DACOutput:
 	movf  SSP2BUF,w  ; Do a dummy read to clear flags
 	
 	; first send high byte plus commands/configuration
-;	movf OUTPUT_HI,w
-	movf OUTPUT_LO,w	; this is baas-ackwards but appears to work
+	movf OUTPUT_HI,w
+;	movf OUTPUT_LO,w	; this is baas-ackwards but appears to work
 	andlw 0x0F	; we will only want least significant4 bits
 	;for DAC0 or DAC1 - dac # (bit 7) 
 	;                 bit 15 A/B: DACA or DACB Selection bit
@@ -748,8 +758,8 @@ WriteByteHiWait:
 	; not sure (if/why) we need this
 	movf  SSP2BUF,w  ; Do a dummy read to clear flags
 	; second send the low byte
-;	movf OUTPUT_LO,w
-	movf OUTPUT_HI,w	; this is baas-ackwards but appears to work
+	movf OUTPUT_LO,w
+;	movf OUTPUT_HI,w	; this is baas-ackwards but appears to work
 	movwf SSP2BUF	; load the buffer
 WriteByteLoWait:
 	btfss	SSP2STAT, BF		; Wait while it sends
@@ -1129,32 +1139,39 @@ Main:
 ; TODO: remove this once ADC is working
 ;	set up a default percussive envelope for Z209
 	; get these values from the [0] value of the 24 bit lookup tables (ControlLookupXXX)
-;	movlw	D'11'		;Immediate Attack setting		
-;	movwf	ATTACK_INC_HI
-;	movlw	D'179'				
-;	movwf	ATTACK_INC_MID
-;	movlw   D'238'
-;	movwf	ATTACK_INC_LO	
-
-	movlw	D'0'		; 75% attack setting		
+	movlw	D'11'		;Immediate Attack setting		
 	movwf	ATTACK_INC_HI
-	movlw	D'1'				
+	movlw	D'179'				
 	movwf	ATTACK_INC_MID
-	movlw   D'224'
-	movwf	ATTACK_INC_LO
+	movlw   D'238'
+	movwf	ATTACK_INC_LO	
+
+;	movlw	D'0'		; 75% attack setting		
+;	movwf	ATTACK_INC_HI
+;	movlw	D'1'				
+;	movwf	ATTACK_INC_MID
+;	movlw   D'224'
+;	movwf	ATTACK_INC_LO
 	
 	; get these values from the median value of the 24 bit lookup tables (ControlLookupXXX)
-	movlw	D'0'				
-	movwf	DECAY_INC_HI
-	movlw	D'189'				
-	movwf	DECAY_INC_MID
-	movlw   D'104'
-	movwf	DECAY_INC_LO
+;	movlw	D'0'		; fast decay		
+;	movwf	DECAY_INC_HI
+;	movlw	D'189'				
+;	movwf	DECAY_INC_MID
+;	movlw   D'104'
+;	movwf	DECAY_INC_LO
 
+	movlw	D'0'		; slow 75% decay setting	
+	movwf	DECAY_INC_HI
+	movlw	D'1'				
+	movwf	DECAY_INC_MID
+	movlw   D'224'
+	movwf	DECAY_INC_LO
+	
 	movlw	0x7F		    ; median
 	movwf	SUSTAIN_CV
 
-	movlw	D'0'				
+	movlw	D'0'		; medium 50% ??? release		
 	movwf	RELEASE_INC_HI
 	movlw	D'19'				
 	movwf	RELEASE_INC_MID
