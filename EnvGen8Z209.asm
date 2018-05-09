@@ -15,7 +15,11 @@
 ;2018-05-06 ozh - debug outputting to both DAC0 and DAC1  
 ;2018-05-07 ozh - hand optimize where I can
 ;2018-05-07 ozh - add EnvGen8 code and integrate with my hardware config and DAC output
-;2018-05-08 ozh - got the interrupt timer working.  I press the gate & LED 1 flashes!!!    
+;2018-05-08 ozh - got the interrupt timer working.  I press the gate & LED 1 flashes!!! 
+;2018-05-08 ozh - I've got an envelope of sorts, but the output is goofy.  Multiple ramps per stage
+;		    I think this is a "Dacout" impedance mismatch.
+	
+	
 ; PIC16F18855 Configuration Bit Settings
 
 ; Assembly source line config statements
@@ -221,16 +225,17 @@
 	TEMP						; Useful working storage
 	FLAGS						; See Defines below
 	; The current A/D channel and value
-	ADC_CHANNEL
+	ADC_CHANNEL	;0x72
 	ADC_VALUE
 	; The current output level when an Attack or Release starts
-	START_HI
+	START_HI	;0x74
 	START_LO
 	; The 12 bit output level
-	OUTPUT_HI
+	OUTPUT_HI	;0x76
 	OUTPUT_LO
-	DAC_NUMBER
-	TEST_COUNTER
+	DAC_NUMBER	;0x78
+	TEST_COUNTER_HI
+	TEST_COUNTER_LO
  ENDC
 
 ;-------------------------------------
@@ -293,8 +298,17 @@ InterruptEnter:
 	bcf	PIR4, TMR2IF			; Clear TMR2 interrupt flag
 
 	movlb	D'0'				; Bank 0
-	
-	bsf	LEDLAST	    ; Z209
+	;Test ONLY Z209 code  (16 bit counter to toggle Sustain LED of ADSR 0)	
+	incfsz	TEST_COUNTER_LO, f
+	goto	EndTest
+	incfsz	TEST_COUNTER_HI, f
+	goto	EndTest	
+	;bcf	GATE_LED0
+	movlw	BIT2
+	xorwf	LATB,f		; XOR toggles the and bit set in prev value
+
+EndTest:
+	; end test
 	
 	; If we're in LFO mode, we can ignore the GATE and TRIGGER inputs
 	btfsc	LFO_MODE
@@ -547,9 +561,9 @@ Attack:
 ExponentialAttack:
 	; Set up the exponential lookup index
 	clrf	FSR1H
-	lslf	PHASE_HI, w			; Shift it up for 16-bit table
+	lslf	PHASE_HI, w		; Shift it up for 16-bit table
 	movwf	FSR1L
-	rlf		FSR1H, f
+	rlf	FSR1H, f
 	; Add the table base address
 	movlw	LOW AttackCurve		; Get the table base address
 	addwf	FSR1L, f			; Add it to the index
@@ -597,7 +611,7 @@ ExponentialDecay:
 	clrf	FSR1H
 	lslf	PHASE_HI, w			; Shift it up for 16-bit table
 	movwf	FSR1L
-	rlf		FSR1H, f
+	rlf	FSR1H, f
 	; Add the table base address
 	movlw	LOW DecayCurve		; Get the table base address
 	addwf	FSR1L, f			; Add it to the index
@@ -645,7 +659,7 @@ ExponentialRelease:
 	clrf	FSR1H
 	lslf	PHASE_HI, w			; Shift it up for 16-bit table
 	movwf	FSR1L
-	rlf		FSR1H, f
+	rlf	FSR1H, f
 	; Add the table base address
 	movlw	LOW DecayCurve		; Get the table base address
 	addwf	FSR1L, f			; Add it to the index
@@ -679,25 +693,43 @@ DACOutput:
 ;	movlw	B'00000001'
 ;	movwf	DACLD				; Load DAC1 alone
 
-;	output to MCP4922, not the internal DAC
+;	output to MCP4922, not the internal DAC	
+	
+	; rotate the 10 bit value twice to multiply by 4 for 12 bits
+;	clrc			; clear carry flag = 0 
+;	rlf	OUTPUT_LO, f  ; move cary into lsb and msb into carry	
+;	rlf	OUTPUT_HI, f  ; move carry into lsb and msb into carry
+;	rlf	OUTPUT_LO, f  ; again	
+;	rlf	OUTPUT_HI, f	
+;	rlf	OUTPUT_LO, f  ; move cary into lsb and msb into carry	
+;	rlf	OUTPUT_HI, f  ; move carry into lsb and msb into carry
+;	rlf	OUTPUT_LO, f  ; again	
+;	rlf	OUTPUT_HI, f	
+
+	; this makes no sense, but I tried it as a data point
+;	clrc			; clear carry flag = 0 
+;	rrf	OUTPUT_HI, f  ; move carry into msb and lsb into carry
+;	rrf	OUTPUT_LO, f  ; move cary into msb and lsb into carry	
+	
 	movlw DAC0	; TODO: change this hardcoded DAC0 to a variable
         ; pass in the DAC # (in bit 7) via 
 	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
         movwf DAC_NUMBER     
 
 	; output the OUTPUT_HI and OUTPUT_LO to the DAC# (0 or 1) specified in W
-	movlb 0		; PORTB
+	movlb D'0'		; PORTB
 	bcf   NOT_CS	; Take ~CS Low
 	nop		; settling time
 	
-	movlb 3
+	movlb D'3'
 ;    // Clear the Write Collision flag, to allow writing
 	bcf SSP2CON1,WCOL   ;    SSP2CON1bits.WCOL = 0;
 	; not sure (if/why) we need this
 	movf  SSP2BUF,w  ; Do a dummy read to clear flags
 	
 	; first send high byte plus commands/configuration
-	movf OUTPUT_HI,w
+;	movf OUTPUT_HI,w
+	movf OUTPUT_LO,w	; this is baas-ackwards but appears to work
 	andlw 0x0F	; we will only want least significant4 bits
 	;for DAC0 or DAC1 - dac # (bit 7) 
 	;                 bit 15 A/B: DACA or DACB Selection bit
@@ -716,14 +748,15 @@ WriteByteHiWait:
 	; not sure (if/why) we need this
 	movf  SSP2BUF,w  ; Do a dummy read to clear flags
 	; second send the low byte
-	movf OUTPUT_LO,w
+;	movf OUTPUT_LO,w
+	movf OUTPUT_HI,w	; this is baas-ackwards but appears to work
 	movwf SSP2BUF	; load the buffer
 WriteByteLoWait:
 	btfss	SSP2STAT, BF		; Wait while it sends
 	goto	WriteByteLoWait	
 	
 	; end of write
-	movlb 0		; PORTB
+	movlb D'0'		; PORTB
 	bsf   NOT_CS	; Take ~CS high
 	; don't need this here
 ;	nop		; settling time
@@ -1075,16 +1108,6 @@ Main:
 	clrf	DECAY_CV
 	clrf	SUSTAIN_CV
 	clrf	RELEASE_CV
-; TODO: remove this once ADC is working
-;	set up a default percussive envelope for Z209
-	movlw	0x7f				
-	movwf	DECAY_CV
-	movlw	0x7f
-	movwf	SUSTAIN_CV
-	movlw	0x3f
-	movwf	RELEASE_CV
-; end percussive preset
-	
 	clrf	TIME_CV				; Default to no time modulation
 	clrf	MODE_CV				; Default to standard ADSR, no looping
 	clrf	STAGE
@@ -1102,6 +1125,44 @@ Main:
 	clrf	RELEASE_INC_LO
 	clrf	RELEASE_INC_MID
 	clrf	RELEASE_INC_HI
+
+; TODO: remove this once ADC is working
+;	set up a default percussive envelope for Z209
+	; get these values from the [0] value of the 24 bit lookup tables (ControlLookupXXX)
+;	movlw	D'11'		;Immediate Attack setting		
+;	movwf	ATTACK_INC_HI
+;	movlw	D'179'				
+;	movwf	ATTACK_INC_MID
+;	movlw   D'238'
+;	movwf	ATTACK_INC_LO	
+
+	movlw	D'0'		; 75% attack setting		
+	movwf	ATTACK_INC_HI
+	movlw	D'1'				
+	movwf	ATTACK_INC_MID
+	movlw   D'224'
+	movwf	ATTACK_INC_LO
+	
+	; get these values from the median value of the 24 bit lookup tables (ControlLookupXXX)
+	movlw	D'0'				
+	movwf	DECAY_INC_HI
+	movlw	D'189'				
+	movwf	DECAY_INC_MID
+	movlw   D'104'
+	movwf	DECAY_INC_LO
+
+	movlw	0x7F		    ; median
+	movwf	SUSTAIN_CV
+
+	movlw	D'0'				
+	movwf	RELEASE_INC_HI
+	movlw	D'19'				
+	movwf	RELEASE_INC_MID
+	movlw   D'49'
+	movwf	RELEASE_INC_LO
+
+; end percussive preset
+	
 	; Set up the Punch increment (fixed stage length of about 5msecs)
 	movlw	D'160'
 	movwf	PUNCH_INC_LO
@@ -1134,18 +1195,9 @@ MainLoop:
 	; Change to next A/D channel
 	incfsz	ADC_CHANNEL, f
 	goto	SelectADCChannel
-	;Test ONLY Z209 code	
-	incfsz	TEST_COUNTER, f
-	goto	SelectADCChannel
-	
-	;bcf	GATE_LED0
-	movlw	BIT2
-	xorwf	LATB,f		; XOR toggles the and bit set in prev value
-	; end test
 	
 ; We need to do different things depending on which value we're reading:
 SelectADCChannel:
-
 	movf	ADC_CHANNEL, w		; Get current channel
 	andlw	D'7'				; Only want 3 LSBs
 	; skip ADC until the DAC output is working with preset values - OZH
@@ -1353,13 +1405,13 @@ Init_Ports:
 	
 ; convert working C code from DualEG (mcc generated) to ASM
 ;void PIN_MANAGER_Initialize(void)
-	movlb 0
+	movlb D'0'
 	clrf LATA   ;    LATA = 0x00;
 	movlw 0x20
 	movwf LATB  ;    LATB = 0x20;  
 	clrf LATC   ;    LATC = 0x00; 
 
-;	movlb 0
+;	movlb D'0'
 	movlw 0xFF
 	movwf TRISA ;    TRISA = 0xFF;
 	clrf TRISB  ;    TRISB = 0x00;
@@ -1454,13 +1506,13 @@ Init_Ports:
 ;   set up SPI on SSP2
 	call Init_SPI2	; SPI for DAC
 	
-	movlb 0		; reset to bank 0
+	movlb D'0'		; reset to bank 0
 	return
 	
 ; convert working C code from DualEG (mcc generated) to ASM
 Init_SPI2:
 ;    // Set the SPI2 module to the options selected in the User Interface
-	movlb 3
+	movlb D'3'
 ;    // SMP Middle; CKE Idle to Active; = 0x00 MODE 1 when CKP Idle:Low, Active:High (not supported by MCP4922)
 ;    // SMP Middle; CKE Active to Idle; = 0x40 MODE 0 when CKP Idle:Low, Active:High ( IS supported by MCP4922)
 ;       0x20 is same as 0x40, but change clock to FOSC4 (8000kHz).  This was apparently too fast!!!	
