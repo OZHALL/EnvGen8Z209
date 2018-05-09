@@ -18,9 +18,9 @@
 ;2018-05-08 ozh - got the interrupt timer working.  I press the gate & LED 1 flashes!!! 
 ;2018-05-08 ozh - I've got an envelope of sorts, but the output is goofy.  Multiple ramps per stage
 ;		    I think this is a "Dacout" impedance mismatch.
-;		    Fixed this with 1) change 16 bit value to 12 bits
-;		    Skip the "invert results" stage
-	
+;		    Fixed this by changing the 16 bit output value to 12 bits
+; TODO: still have a problem cuz Release jumps up to 100% from sustain level before going to 0
+;	Next up: get the ADSR parameters input from the faders
 	
 ; PIC16F18855 Configuration Bit Settings
 
@@ -680,10 +680,9 @@ ReleaseScaling:
 	addwfc	MULT_OUT_HI, w
 	movwf	OUTPUT_HI
 	
-	; Z209 don't need to invert
 	; Invert the result
-	;comf	OUTPUT_HI,f
-	;comf	OUTPUT_LO,f
+	comf	OUTPUT_HI,f
+	comf	OUTPUT_LO,f
 
 ; Set DAC Output
 ;---------------------------------------
@@ -698,20 +697,9 @@ DACOutput:
 ;	movwf	DACLD				; Load DAC1 alone
 
 ;	output to MCP4922, not the internal DAC	
-	
-	; rotate the 10 bit value twice to multiply by 4 for 12 bits
-;	clrc			; clear carry flag = 0 
-;	rlf	OUTPUT_LO, f  ; move cary into lsb and msb into carry	
-;	rlf	OUTPUT_HI, f  ; move carry into lsb and msb into carry
-;	rlf	OUTPUT_LO, f  ; again	
-;	rlf	OUTPUT_HI, f	
-;	rlf	OUTPUT_LO, f  ; move cary into lsb and msb into carry	
-;	rlf	OUTPUT_HI, f  ; move carry into lsb and msb into carry
-;	rlf	OUTPUT_LO, f  ; again	
-;	rlf	OUTPUT_HI, f	
 
 	; take 16 bits down to 12 bits
-	clrc			; clear carry flag = 0 
+	clrc		    ; clear carry flag = 0 
 	rrf	OUTPUT_HI, f  ; move carry into msb and lsb into carry
 	rrf	OUTPUT_LO, f  ; move cary into msb and lsb into carry	
 	rrf	OUTPUT_HI, f  ; move carry into msb and lsb into carry
@@ -1154,21 +1142,21 @@ Main:
 ;	movwf	ATTACK_INC_LO
 	
 	; get these values from the median value of the 24 bit lookup tables (ControlLookupXXX)
-;	movlw	D'0'		; fast decay		
-;	movwf	DECAY_INC_HI
-;	movlw	D'189'				
-;	movwf	DECAY_INC_MID
-;	movlw   D'104'
-;	movwf	DECAY_INC_LO
-
-	movlw	D'0'		; slow 75% decay setting	
+	movlw	D'0'		; fast decay		
 	movwf	DECAY_INC_HI
-	movlw	D'1'				
+	movlw	D'189'				
 	movwf	DECAY_INC_MID
-	movlw   D'224'
+	movlw   D'104'
 	movwf	DECAY_INC_LO
+
+;	movlw	D'0'		; slow 75% decay setting	
+;	movwf	DECAY_INC_HI
+;	movlw	D'1'				
+;	movwf	DECAY_INC_MID
+;	movlw   D'224'
+;	movwf	DECAY_INC_LO
 	
-	movlw	0x7F		    ; median
+	movlw	0xC0		    ; median
 	movwf	SUSTAIN_CV
 
 	movlw	D'0'		; medium 50% ??? release		
