@@ -464,7 +464,8 @@ NextStage:
 TestPunch:
 ; Do we use the Punch stage?
 	btfss	USE_ADSR		; Standard ADSR, so skip Punch
-	goto	TestLooping
+	;TODO: uncomment the next line
+	;goto	TestLooping
 
 SkipPunch:
 	; Are we on the Punch stage?
@@ -984,18 +985,20 @@ LookupAndInterp:
 ;----------------------------------------
 DoADConversion:
 	movlb	D'1'				; Bank 1
-	movwf	ADCON0
+	; set the ADC channel
+	;movwf	ADCON0
+	movwf	ADPCH				;ADC Positive Channel Selection
 
 	; Short delay whilst the channel settles
 	movlw   D'50'
 	movwf   TEMP
 	decfsz  TEMP, f
-	bra		$-1
+	bra	$-1
 
 	; Start the conversion
-	bsf		ADCON0, GO_NOT_DONE
+	bsf	ADCON0, ADGO		;GO_NOT_DONE
 	; Wait for it to finish
-	btfsc	ADCON0, GO_NOT_DONE	; Is it done?
+	btfsc	ADCON0, ADGO		;GO_NOT_DONE	; Is it done?
 	bra		$-1
 
 	;  Read the ADC Value and store it
@@ -1057,11 +1060,43 @@ Main:
 ;	movwf	ANSELC
 ; TODO: review this setup
 	movlb	D'1'				; Bank 1
-	movlw	B'00000001'			; AN0, ADC on
-	movwf	ADCON0	
-	movlw	B'01100000'			; Left-justified, Fosc/64, Vss to Vdd range.
-	movwf	ADCON1
-; not using internal DAC!	
+	; set up the clock
+	movlw	B'00000101'			; Fosc/16
+	movwf	ADCLK
+	; ADCON0 - turn ADC on see 23.6 
+;	movlw	B'00000001'			; AN0, ADC on
+	movlw	B'10000000'			; ADON,ADCON,n/a,ADCS (clock source 0 = Fosc)
+						; ADFRM( 0 = left justified)
+	movwf	ADCON0				; ADGO ( set to 1 to start the conversion)
+	; ADCON1
+	movlw	B'00000001'				; ADDPOL 0 TODO: recheck this)
+						; ADIPEN 0 recheck
+						; ADGPOL 0 recheck
+	movwf	ADCON1				; ADDSEN 1 enable double sample
+						
+;	movlw	B'01100000'			; Left-justified, Fosc/64, Vss to Vdd range.
+;	movwf	ADCON1
+	; ADCON2
+	movlw	B'01000000' ;ADPSIS 0=send ADFLTR filtered results to ADPREV
+			    ;ADCRS 100 - LP filter time is 2 ADCRS, filter gain 1:1
+			    ;ADACLR 0  - not started
+			    ;ADMD (mode) 000 Basic Mode (for now)
+	movwf	ADCON2
+	; ADCON3
+	movlw	B'00000000'    ;ADCALC TODO: recheck this 000 first derivative of single measurement
+			    ;ADSOI 0 ADGO is not cleard by hardware - do it in software
+			    ;ADTMD 000 (ADTIF is disabled)
+	movwf	ADCON3
+	
+	;ADREF
+	movlw	B'00000000'    ; ADNREF 0 VREF- is AVSS;	ADPREF 00 VREF+ is VDD
+	movwf	ADREF
+	
+	; set channel using ADPCH - pretty straight forward
+	; 00000000 = ANA0
+	; 00000111 = ANA7
+	
+	; not using internal DAC!	
 ; Set up DAC1 (10-bit) for Envelope Output
 ;	movlb	D'11'				; All DACs are in Bank 11
 ;	movlw	B'11000100'			; Enabled, L-justified, No output, Vref+, Vss
@@ -1156,7 +1191,7 @@ Main:
 ;	movlw   D'224'
 ;	movwf	DECAY_INC_LO
 	
-	movlw	0xC0		    ; median
+	movlw	0x7F		    ; median
 	movwf	SUSTAIN_CV
 
 	movlw	D'0'		; medium 50% ??? release		
@@ -1198,20 +1233,17 @@ Main:
 
 MainLoop:
 	; Change to next A/D channel
-	incfsz	ADC_CHANNEL, f
-	goto	SelectADCChannel
+	incf	ADC_CHANNEL, f
 	
 ; We need to do different things depending on which value we're reading:
 SelectADCChannel:
 	movf	ADC_CHANNEL, w		; Get current channel
-	andlw	D'7'				; Only want 3 LSBs
-	; skip ADC until the DAC output is working with preset values - OZH
-	; TODO: reintroduce the ADC later
-;	brw							; Computed branch
-;	goto	AttackCV
-;	goto	DecayCV
-;	goto	SustainCV
-;	goto	ReleaseCV
+	andlw	D'7'			; Only want 3 LSBs
+	brw				; Computed branch
+	goto	AttackCV
+	goto	DecayCV
+	goto	SustainCV
+	goto	ReleaseCV
 	; don't process these channels, leave them hardcoded
 ;	goto	TimeCV
 ;	goto	ModeCV
@@ -1219,13 +1251,13 @@ SelectADCChannel:
 ScannedAllChannels:
 	; Reset ADC channel 
 	movlw	D'7'
-	;movwf	ADC_CHANNEL
+	movwf	ADC_CHANNEL
 	goto	MainLoop
 
 
 ; Update the Attack CV
 AttackCV:
-	movlw	b'00000001'	; AN0, ADC On
+	movlw	D'0'		; ANA0
 	call	DoADConversion
 	movwf	ATTACK_CV
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
@@ -1250,7 +1282,7 @@ AttackCV:
 
 ; Update the Decay CV
 DecayCV:
-	movlw	b'00001001'			; AN2, ADC On
+	movlw	D'1'		; ANA1
 	call	DoADConversion
 	movwf	DECAY_CV
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
@@ -1275,9 +1307,7 @@ DecayCV:
 
 ; Update the Sustain CV
 SustainCV:
-;	movlw	b'00010001'			; AN4, ADC On
-    ; Question: in what way is the AN4? (looks like AN2 to me)
-	movlw	b'00010010'			; AN2, ADC On	Z209
+	movlw	D'2'		; ANA2
 	call	DoADConversion
 	movwf	SUSTAIN_CV			; Simply store this one- easy!
 	goto	MainLoop
@@ -1286,7 +1316,7 @@ SustainCV:
 ; Update the Release CV
 ReleaseCV:
 ;	movlw	b'00010101'			; AN5, ADC On
-	movlw	b'00010011'			; AN3, ADC On	Z209
+	movlw	D'3'		; ANA3
 	call	DoADConversion
 	movwf	RELEASE_CV
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
