@@ -21,6 +21,7 @@
 ;		    Fixed this by changing the 16 bit output value to 12 bits
 ; TODO: still have a problem cuz Release jumps up to 100% from sustain level before going to 0
 ;	Next up: get the ADSR parameters input from the faders
+;2018-05-09 ozh - ADSR from faders is working!   Release issue solved (thx Tom W.!)
 	
 ; PIC16F18855 Configuration Bit Settings
 
@@ -220,6 +221,8 @@
 	RELEASE_INC_HI	
 	;Z209
 	GIE_STATE	;variable
+
+	
  ENDC
 
 ; 0x70-0x7F  Common RAM - Special variables available in all banks
@@ -235,7 +238,10 @@
 	; The 12 bit output level
 	OUTPUT_HI	;0x76
 	OUTPUT_LO
-	DAC_NUMBER	;0x78
+	; temp variables
+	WORK_HI		;0x78
+	WORK_LO
+	DAC_NUMBER	;0x7A
 	TEST_COUNTER_HI
 	TEST_COUNTER_LO
  ENDC
@@ -700,22 +706,26 @@ DACOutput:
 ;	output to MCP4922, not the internal DAC	
 
 	; take 16 bits down to 12 bits
+	movf	OUTPUT_HI,w
+	movwf	WORK_HI
+	movf	OUTPUT_LO,w
+	movwf	WORK_LO
 	clrc		    ; clear carry flag = 0 
-	rrf	OUTPUT_HI, f  ; move carry into msb and lsb into carry
-	rrf	OUTPUT_LO, f  ; move cary into msb and lsb into carry	
-	rrf	OUTPUT_HI, f  ; move carry into msb and lsb into carry
-	rrf	OUTPUT_LO, f  ; move cary into msb and lsb int
-	rrf	OUTPUT_HI, f  ; move carry into msb and lsb into carry
-	rrf	OUTPUT_LO, f  ; move cary into msb and lsb int
-	rrf	OUTPUT_HI, f  ; move carry into msb and lsb into carry
-	rrf	OUTPUT_LO, f  ; move cary into msb and lsb int
+	lsrf	WORK_HI, f  ; move lsb into carry
+	rrf	WORK_LO, f  ; move cary into msb and lsb into carry	
+	lsrf	WORK_HI, f  ; move lsb into carry
+	rrf	WORK_LO, f  ; move cary into msb and lsb int
+	lsrf	WORK_HI, f  ; move lsb into carry
+	rrf	WORK_LO, f  ; move cary into msb and lsb int
+	lsrf	WORK_HI, f  ; move lsb into carry
+	rrf	WORK_LO, f  ; move cary into msb and lsb int
 	
 	movlw DAC0	; TODO: change this hardcoded DAC0 to a variable
         ; pass in the DAC # (in bit 7) via 
 	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
         movwf DAC_NUMBER     
 
-	; output the OUTPUT_HI and OUTPUT_LO to the DAC# (0 or 1) specified in W
+	; output the WORK_HI and WORK_LO to the DAC# (0 or 1) specified in W
 	movlb D'0'		; PORTB
 	bcf   NOT_CS	; Take ~CS Low
 	nop		; settling time
@@ -723,12 +733,10 @@ DACOutput:
 	movlb D'3'
 ;    // Clear the Write Collision flag, to allow writing
 	bcf SSP2CON1,WCOL   ;    SSP2CON1bits.WCOL = 0;
-	; not sure (if/why) we need this
 	movf  SSP2BUF,w  ; Do a dummy read to clear flags
 	
 	; first send high byte plus commands/configuration
-	movf OUTPUT_HI,w
-;	movf OUTPUT_LO,w	; this is baas-ackwards but appears to work
+	movf WORK_HI,w
 	andlw 0x0F	; we will only want least significant4 bits
 	;for DAC0 or DAC1 - dac # (bit 7) 
 	;                 bit 15 A/B: DACA or DACB Selection bit
@@ -744,11 +752,9 @@ WriteByteHiWait:
 	btfss	SSP2STAT, BF		; Wait while it sends
 	goto	WriteByteHiWait	
 
-	; not sure (if/why) we need this
 	movf  SSP2BUF,w  ; Do a dummy read to clear flags
 	; second send the low byte
-	movf OUTPUT_LO,w
-;	movf OUTPUT_HI,w	; this is baas-ackwards but appears to work
+	movf WORK_LO,w
 	movwf SSP2BUF	; load the buffer
 WriteByteLoWait:
 	btfss	SSP2STAT, BF		; Wait while it sends
