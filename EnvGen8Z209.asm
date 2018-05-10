@@ -1159,50 +1159,6 @@ Main:
 	clrf	RELEASE_INC_MID
 	clrf	RELEASE_INC_HI
 
-; TODO: remove this once ADC is working
-;	set up a default percussive envelope for Z209
-	; get these values from the [0] value of the 24 bit lookup tables (ControlLookupXXX)
-	movlw	D'11'		;Immediate Attack setting		
-	movwf	ATTACK_INC_HI
-	movlw	D'179'				
-	movwf	ATTACK_INC_MID
-	movlw   D'238'
-	movwf	ATTACK_INC_LO	
-
-;	movlw	D'0'		; 75% attack setting		
-;	movwf	ATTACK_INC_HI
-;	movlw	D'1'				
-;	movwf	ATTACK_INC_MID
-;	movlw   D'224'
-;	movwf	ATTACK_INC_LO
-	
-	; get these values from the median value of the 24 bit lookup tables (ControlLookupXXX)
-	movlw	D'0'		; fast decay		
-	movwf	DECAY_INC_HI
-	movlw	D'189'				
-	movwf	DECAY_INC_MID
-	movlw   D'104'
-	movwf	DECAY_INC_LO
-
-;	movlw	D'0'		; slow 75% decay setting	
-;	movwf	DECAY_INC_HI
-;	movlw	D'1'				
-;	movwf	DECAY_INC_MID
-;	movlw   D'224'
-;	movwf	DECAY_INC_LO
-	
-	movlw	0x7F		    ; median
-	movwf	SUSTAIN_CV
-
-	movlw	D'0'		; medium 50% ??? release		
-	movwf	RELEASE_INC_HI
-	movlw	D'19'				
-	movwf	RELEASE_INC_MID
-	movlw   D'49'
-	movwf	RELEASE_INC_LO
-
-; end percussive preset
-	
 	; Set up the Punch increment (fixed stage length of about 5msecs)
 	movlw	D'160'
 	movwf	PUNCH_INC_LO
