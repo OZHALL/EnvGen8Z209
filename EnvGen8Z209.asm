@@ -21,7 +21,14 @@
 ;		    Fixed this by changing the 16 bit output value to 12 bits
 ; TODO: still have a problem cuz Release jumps up to 100% from sustain level before going to 0
 ;	Next up: get the ADSR parameters input from the faders
-;2018-05-09 ozh - ADSR from faders is working!   Release issue solved (thx Tom W.!)
+;2018-05-10 ozh - ADSR from faders is working!   Release issue solved (thx Tom W.!)
+;2018-05-11 ozh - memory copy routine written/debugged to save/restore 20 essential variables.  
+;		    this will support executing the interrupt code twice - once for each EG
+
+;
+;"Never do single bit output operations on PORTx, use LATx 
+;   instead to avoid the Read-Modify-Write (RMW) effects"
+;
 	
 ; PIC16F18855 Configuration Bit Settings
 
@@ -46,31 +53,12 @@
 ; __config 0x3FFF
  __CONFIG _CONFIG5, _CP_OFF & _CPD_OFF
 
-;------------------------------
-;	Variables
-;------------------------------
-
-; CBLOCK 0x020
-;	LOOP_COUNTER_1
-;	LOOP_COUNTER_2
-;	LEDCOUNTER
-; ENDC
- ; 0x70-0x7F  Common RAM - Special variables available in all banks
-; CBLOCK 0x070
- 	; The 12 bit output level
-;	OUTPUT_HI
-;	OUTPUT_LO
-;	DAC_NUMBER
-; ENDC
  
 ;-------------------------------------
 ;	DEFINE STATEMENTS
 ;-------------------------------------
 
 ; Useful bit definitions for clarity	
-;#define ZERO		STATUS,Z	; Zero Flag
-;#define CARRY		STATUS,C	; Carry Flag
-;#define BORROW		STATUS,C	; Borrow is the same as Carry
 #define NOT_CS		PORTB,5         ; RB5 
 #define BIT0 		b'00000001'
 #define BIT1 		b'00000010'
@@ -184,8 +172,6 @@
 	MULT_IN_LO					; CURVE_OUT is the other input
 	MULT_OUT_HI
 	MULT_OUT_LO
-	; The current stage 
-	STAGE	; 0=Wait, 1=Attack, 2=Punch, 3=Decay, 4=Sustain, 5=Release, 0=Wait
 
 	; The current control voltage(CV) values (8 bit)
 	ATTACK_CV					; These first four aren't actually used any more
@@ -194,6 +180,10 @@
 	RELEASE_CV
 	TIME_CV						; TIME is used directly
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
+
+	; begin 20 variables which are EG specific
+	; The current stage 
+	STAGE	; 0=Wait, 1=Attack, 2=Punch, 3=Decay, 4=Sustain, 5=Release, 0=Wait
 	; The debounce counters for GATE and TRIGGER
 	DEBOUNCE_HI
 	DEBOUNCE_LO
@@ -219,10 +209,70 @@
 	RELEASE_INC_LO
 	RELEASE_INC_MID
 	RELEASE_INC_HI	
+	
+	;Z209 - save a copy for each EG
+	; begin model for EG 0
+	; The current stage 
+	M0_STAGE	; 0=Wait, 1=Attack, 2=Punch, 3=Decay, 4=Sustain, 5=Release, 0=Wait
+	; The debounce counters for GATE and TRIGGER
+	M0_DEBOUNCE_HI
+	M0_DEBOUNCE_LO
+	M0_STATES						; The output state from the debounce
+	M0_CHANGES						; The bits that have altered
+	; The 24 bit phase accumulator
+	M0_PHASE_HI
+	M0_PHASE_MID
+	M0_PHASE_LO
+	; The 20 bit frequency increments
+	; These are stored separately for Attack, Decay, & Release
+	; Note that these increments have been adjusted to reflect
+	; changes due to TIME_CV, whereas the raw CVs haven't
+	M0_ATTACK_INC_LO
+	M0_ATTACK_INC_MID
+	M0_ATTACK_INC_HI
+	M0_PUNCH_INC_LO				; Punch stage is not variable
+	M0_PUNCH_INC_MID
+	M0_PUNCH_INC_HI
+	M0_DECAY_INC_LO
+	M0_DECAY_INC_MID
+	M0_DECAY_INC_HI
+	M0_RELEASE_INC_LO
+	M0_RELEASE_INC_MID
+	M0_RELEASE_INC_HI	
+	; end EG 0
+	
+	; begin model for EG 1
+	; The current stage 
+	M1_STAGE	; 0=Wait, 1=Attack, 2=Punch, 3=Decay, 4=Sustain, 5=Release, 0=Wait
+	; The debounce counters for GATE and TRIGGER
+	M1_DEBOUNCE_HI
+	M1_DEBOUNCE_LO
+	M1_STATES						; The output state from the debounce
+	M1_CHANGES						; The bits that have altered
+	; The 24 bit phase accumulator
+	M1_PHASE_HI
+	M1_PHASE_MID
+	M1_PHASE_LO
+	; The 20 bit frequency increments
+	; These are stored separately for Attack, Decay, & Release
+	; Note that these increments have been adjusted to reflect
+	; changes due to TIME_CV, whereas the raw CVs haven't
+	M1_ATTACK_INC_LO
+	M1_ATTACK_INC_MID
+	M1_ATTACK_INC_HI
+	M1_PUNCH_INC_LO				; Punch stage is not variable
+	M1_PUNCH_INC_MID
+	M1_PUNCH_INC_HI
+	M1_DECAY_INC_LO
+	M1_DECAY_INC_MID
+	M1_DECAY_INC_HI
+	M1_RELEASE_INC_LO
+	M1_RELEASE_INC_MID
+	M1_RELEASE_INC_HI
+	; end EG 1
+	
 	;Z209
 	GIE_STATE	;variable
-
-	
  ENDC
 
 ; 0x70-0x7F  Common RAM - Special variables available in all banks
@@ -242,8 +292,9 @@
 	WORK_HI		;0x78
 	WORK_LO
 	DAC_NUMBER	;0x7A
-	TEST_COUNTER_HI
-	TEST_COUNTER_LO
+	LOOP_COUNTER
+;	TEST_COUNTER_HI
+;	TEST_COUNTER_LO
  ENDC
 
 ;-------------------------------------
@@ -264,10 +315,6 @@
 #define LOOPING		FLAGS, 1	; Looping (Makes env loop whilst GATE high)
 
 ; Input definitions
-; #define TRIG_CHANGED	CHANGES, 4	; RC4 = TRIGGER input
-; #define TRIGGER			STATES, 4
-; #define GATE_CHANGED	CHANGES, 5	; RC = GATE input
-; #define GATE			STATES, 5
 #define TRIG_CHANGED	CHANGES, 0	; RC0 = TRIGGER input
 #define TRIGGER			STATES, 0
 #define GATE_CHANGED	CHANGES, 0	; RC0 = GATE input
@@ -278,10 +325,6 @@
 #define GATE_LED0 LATB,0	; 
 #define GATE_LED1 LATB,4
 #define LEDLAST	  LATC,7  ; last LED on pin 7 of port C
- 
-; Output DAC assignments, mostly for readability (Bank 11)
-;#define ENV_OUT_LO		DAC1REFL
-;#define ENV_OUT_HI		DAC1REFH
  
 
 ;----------------------------------------------------------------------
@@ -306,14 +349,14 @@ InterruptEnter:
 	bcf	PIR4, TMR2IF			; Clear TMR2 interrupt flag
 
 	movlb	D'0'				; Bank 0
-	;Test ONLY Z209 code  (16 bit counter to toggle Sustain LED of ADSR 0)	
-	incfsz	TEST_COUNTER_LO, f
-	goto	EndTest
-	incfsz	TEST_COUNTER_HI, f
-	goto	EndTest	
-	;bcf	GATE_LED0
-	movlw	BIT2
-	xorwf	LATB,f		; XOR toggles the and bit set in prev value
+;	;Test ONLY Z209 code  (16 bit counter to toggle Sustain LED of ADSR 0)	
+;	incfsz	TEST_COUNTER_LO, f
+;	goto	EndTest
+;	incfsz	TEST_COUNTER_HI, f
+;	goto	EndTest	
+;	;bcf	GATE_LED0
+;	movlw	BIT2
+;	xorwf	LATB,f		; XOR toggles the and bit set in prev value
 
 EndTest:
 	; end test
@@ -327,7 +370,8 @@ EndTest:
 ;---------------------------------------------------------
 ; Do Scott Dattalo's vertical counter debounce (www.dattalo.com)
 ; This could debounce eight inputs, but I'm using only two:
-; RC4 Trigger and RC5 Gate
+; RC0 Trigger/Gate
+; RC1 Trigger/Gate
 	
 ; Z209 consolidate Gate & Trigger & use RC0 for channel 0, RC1 for channel 1
 	
@@ -469,9 +513,9 @@ NextStage:
 
 TestPunch:
 ; Do we use the Punch stage?
-	btfss	USE_ADSR		; Standard ADSR, so skip Punch
-	;TODO: uncomment the next line
-	;goto	TestLooping
+;	Z209 - hard code Punch usage
+;	btfss	USE_ADSR		; Standard ADSR, so skip Punch
+	goto	TestLooping
 
 SkipPunch:
 	; Are we on the Punch stage?
@@ -719,11 +763,6 @@ DACOutput:
 	rrf	WORK_LO, f  ; move cary into msb and lsb int
 	lsrf	WORK_HI, f  ; move lsb into carry
 	rrf	WORK_LO, f  ; move cary into msb and lsb int
-	
-	movlw DAC0	; TODO: change this hardcoded DAC0 to a variable
-        ; pass in the DAC # (in bit 7) via 
-	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
-        movwf DAC_NUMBER     
 
 	; output the WORK_HI and WORK_LO to the DAC# (0 or 1) specified in W
 	movlb D'0'		; PORTB
@@ -1013,6 +1052,66 @@ DoADConversion:
 	movlb	D'0'				; Bank 0
 	return
 
+; TODO: flesh this out
+; call this in three places
+; 1 - after variable init - copy WK to model 0 & 1
+; 2 - beginning of Interrupt - copy model 0 to WK, do routine copy WK to model 0
+;	repeat for model 1
+; 3 - end of Interrupt - copy WK to model 0 or 1 as appropriate
+;
+; copy variables To the working storage from the "model"
+; in w, pass in 0 for EG-0 or 1 for EG-1
+; FSR0 is source
+; FSR1 is destination
+	
+CopyToModel: 
+	; set up CopyMemoryBlock 
+	    clrf    FSR0H	    ;copy from bank 0 
+	    clrf    FSR1H	    ;copy to bank 0
+
+	    btfsc   WREG,0	    ; test bit 0 in w if it is clear, skip next instruction
+	    goto    CTMEG1
+CTMEG0:
+	    movlw   #M0_STAGE	    ;choose the Model 0 as the destination
+	    goto    CTMContinue
+CTMEG1:
+	    movlw   #M1_STAGE	    ;choose the Model 1 as the destination
+CTMContinue:
+	    movwf   FSR1L	    ;model is destination
+	    movlw   #STAGE          ;get the address of STAGE variable 
+	    movwf   FSR0L	    ;put it in the source FSR
+	    goto    CopyMemoryBlock
+	    
+CopyFromModel:
+	; set up CopyMemoryBlock 
+	    clrf    FSR0H	    ;copy from bank 0 
+	    clrf    FSR1H	    ;copy to bank 0 
+ 
+	    btfsc   WREG,0	    ; test bit 0 in w if it is clear, skip next instruction
+	    goto    CFMEG1
+CFMEG0:
+	    bcf	    DAC_NUMBER,7     ; clear bit 7 of DAC_NUMBER ( assume this call comes at InterruptEnter )
+	    movlw   #M0_STAGE	    ;choose the Model 0 as the source
+	    goto    CFMContinue
+CFMEG1:
+	    bsf	    DAC_NUMBER,7     ; set bit 7 of DAC_NUMBER
+	    movlw   #M1_STAGE	    ;choose the Model 1 as the source
+CFMContinue:
+	    movwf   FSR0L	    ;model is source
+	    movlw  #STAGE           ;get the address of STAGE variable 
+	    movwf   FSR1L	    ;put it in the destination FSR
+	    goto    CopyMemoryBlock
+
+CopyMemoryBlock:	    
+	    movlw   d'20'	    ; # of bytes to move
+	    movwf   LOOP_COUNTER
+CopyLoop:
+	    moviw   FSR0++
+	    movwi   FSR1++
+	    decfsz  LOOP_COUNTER
+	    bra	    CopyLoop
+CopyDone:		
+	    return
 ;----------------------------------------
 ;	The main program
 ; This reads the A/D channels and provides
@@ -1101,37 +1200,6 @@ Main:
 	; set channel using ADPCH - pretty straight forward
 	; 00000000 = ANA0
 	; 00000111 = ANA7
-	
-	; not using internal DAC!	
-; Set up DAC1 (10-bit) for Envelope Output
-;	movlb	D'11'				; All DACs are in Bank 11
-;	movlw	B'11000100'			; Enabled, L-justified, No output, Vref+, Vss
-;;	movlw	B'11000000'			; Enabled, L-justified, No output, Vdd, Vss
-;	movwf	DAC1CON0			; (Note that we use Vref+ as Level CV)
-;	clrf	DAC1REFH			; Zero the value
-;	clrf	DAC1REFL
-;	
-;; Set up op-amp to buffer DAC output
-;	movlb	D'10'				; Bank 10
-;	movlw	B'00000000'			; -in = default (we set unity gain in a mo)
-;	movwf	OPA1NCHS
-;	movlw	B'00000010'			; +in = DAC1
-;	movwf	OPA1PCHS
-;	movlw	B'10010000'			; Enabled, Unity Gain, no override
-;	movwf	OPA1CON
-;	movlw	B'00000000'			; Override selection (default)
-;	movwf	OPA1ORS
-
-; not using these inputs at this time.  see Init_Ports
-;; Set up weak pull-ups on USE_ADSR and USE_EXPO inputs
-;	movlb	D'1'				; Bank 1
-;	movlw	B'01111111'
-;	movwf	OPTION_REG			; Weak pull-ups enabled
-;	movlb	D'4'				; Bank 4
-;	movlw	B'000000'			; No Pull-ups on Port C
-;	movwf	WPUC
-;	movlw	B'101000'			; Pull-ups on RA3 and RA5
-;	movwf	WPUA
 
 	
 ; Set up initial values of the variables
@@ -1141,6 +1209,12 @@ Main:
 	; Set up both indirection pointers for Bank0
 	clrf	FSR0H
 	clrf	FSR1H
+
+	; Set up DAC_NUMBER for use with Dacoutput to MCP4922
+	movlw DAC0	    ; init for DAC0, toggle bit 7 in the Copy routines
+        ; pass in the DAC # (in bit 7) via 
+	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
+        movwf DAC_NUMBER     
 
 	; Set up initial values of the variables
 	clrf	ATTACK_CV			; Default to minimum time of 1mS
@@ -1185,7 +1259,12 @@ Main:
 	clrf	DEBOUNCE_LO
 	clrf	STATES
 	clrf	CHANGES
-	
+
+; now copy the 20 registers which define the operation of the EG to both of the model (i.e. EG0 and EG 1)
+	movlw	DAC0
+	call CopyToModel
+	movlw	DAC1		; same for both at this point
+	call CopyToModel
 ; Ok, that's all the setup done, let's get going
 
 	; Start outputting signals	
