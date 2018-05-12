@@ -238,7 +238,13 @@
 	M0_DECAY_INC_HI
 	M0_RELEASE_INC_LO
 	M0_RELEASE_INC_MID
-	M0_RELEASE_INC_HI	
+	M0_RELEASE_INC_HI
+;	; The current output level when an Attack or Release starts
+	M0_START_HI	;0x74
+	M0_START_LO
+	; The 12 bit output level
+	M0_OUTPUT_HI	;0x76
+	M0_OUTPUT_LO
 	; end EG 0
 	
 	; begin model for EG 1
@@ -269,6 +275,12 @@
 	M1_RELEASE_INC_LO
 	M1_RELEASE_INC_MID
 	M1_RELEASE_INC_HI
+	; The current output level when an Attack or Release starts
+	M1_START_HI	;0x74
+	M1_START_LO
+	; The 12 bit output level
+	M1_OUTPUT_HI	;0x76
+	M1_OUTPUT_LO
 	; end EG 1
 	
 	;Z209
@@ -358,8 +370,12 @@ InterruptEnter:
 ;	movlw	BIT2
 ;	xorwf	LATB,f		; XOR toggles the and bit set in prev value
 
-EndTest:
+;EndTest:
 	; end test
+	movlw	DAC0		;start with DAC0
+IntLoop:
+;	call CopyFromModel
+	;process EG0 or EG1
 	
 	; If we're in LFO mode, we can ignore the GATE and TRIGGER inputs
 	btfsc	LFO_MODE
@@ -764,6 +780,11 @@ DACOutput:
 	lsrf	WORK_HI, f  ; move lsb into carry
 	rrf	WORK_LO, f  ; move cary into msb and lsb int
 
+	movlw DAC0	; TODO: change this hardcoded DAC0 to a variable
+        ; pass in the DAC # (in bit 7) via 
+	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
+        movwf DAC_NUMBER   
+	
 	; output the WORK_HI and WORK_LO to the DAC# (0 or 1) specified in W
 	movlb D'0'		; PORTB
 	bcf   NOT_CS	; Take ~CS Low
@@ -807,6 +828,17 @@ WriteByteLoWait:
 ;	return	
 ;----------------------------------------
 InterruptExit:
+;	btfsc	DAC_NUMBER,7		; if bit bit 7 is set, we finished DAC1
+;	goto	FinishedEG1
+;	movlw	DAC0
+;	call	CopyToModel
+;	movlw	DAC1
+;	goto	IntLoop
+;FinishedEG1:
+;	movlw	DAC1		;save DAC1 to model
+;	call	CopyToModel
+;	movlw	DAC0		; move DAC0 fm model
+;	call	CopyFromModel
     	movlb D'0'		; PORTB
     	bcf	LEDLAST
 	retfie
@@ -1069,7 +1101,7 @@ CopyToModel:
 	    clrf    FSR0H	    ;copy from bank 0 
 	    clrf    FSR1H	    ;copy to bank 0
 
-	    btfsc   WREG,0	    ; test bit 0 in w if it is clear, skip next instruction
+	    btfsc   WREG,7	    ; test bit 7 in w if it is clear, skip next instruction
 	    goto    CTMEG1
 CTMEG0:
 	    movlw   #M0_STAGE	    ;choose the Model 0 as the destination
@@ -1087,7 +1119,7 @@ CopyFromModel:
 	    clrf    FSR0H	    ;copy from bank 0 
 	    clrf    FSR1H	    ;copy to bank 0 
  
-	    btfsc   WREG,0	    ; test bit 0 in w if it is clear, skip next instruction
+	    btfsc   WREG,7	    ; test bit 7 in w if it is clear, skip next instruction
 	    goto    CFMEG1
 CFMEG0:
 	    bcf	    DAC_NUMBER,7     ; clear bit 7 of DAC_NUMBER ( assume this call comes at InterruptEnter )
@@ -1106,8 +1138,8 @@ CopyMemoryBlock:
 	    movlw   d'20'	    ; # of bytes to move
 	    movwf   LOOP_COUNTER
 CopyLoop:
-	    moviw   FSR0++
-	    movwi   FSR1++
+	    moviw   INDF0++
+	    movwi   INDF1++
 	    decfsz  LOOP_COUNTER
 	    bra	    CopyLoop
 CopyDone:		
@@ -1127,17 +1159,7 @@ Main:
 	nop	; this seems to be required!!! ozh
 	bcf	GATE_LED1
 	; end test
-;	; Set up the clock for 32MHz internal
-;	movlw	B'11110000'			; 8MHz internal, x4 PLL
-;	movwf	OSCCON
-;
-;	; Set up the IO Ports
-;	movlw   b'111111'			; All inputs RA0:RA5
-;	movwf   TRISA
-;	movlw   b'111011'			; RC2 Output, all others inputs
-;	movwf   TRISC
-;
-;
+
 	; Set up the interrupts (INTCON is a SFR available all banks)
 	bsf	INTCON, GIE		; Enable interrupts
 	bsf	INTCON, PEIE		; Enable peripheral interrupts
@@ -1156,13 +1178,6 @@ Main:
 	; T2PR = 28Dh same as PR2
 	movwf	PR2				; Interrupts at 1MHz/32 = 31.25KHz
 
-; see Init_Ports for this configuration for Z209
-; Set up Analog-to-digital convertor and ADC inputs
-;	movlb	D'3'				; Bank 3
-;	movlw	B'00010111'			; 4 Analog inputs on RA0-RA2, RA4
-;	movwf	ANSELA
-;	movlw	B'00001011'			; 3 Analog inputs on RC0, RC1, RC3
-;	movwf	ANSELC
 ; TODO: review this setup
 	movlb	D'1'				; Bank 1
 	; set up the clock
@@ -1262,9 +1277,9 @@ Main:
 
 ; now copy the 20 registers which define the operation of the EG to both of the model (i.e. EG0 and EG 1)
 	movlw	DAC0
-	call CopyToModel
+;	call	CopyToModel
 	movlw	DAC1		; same for both at this point
-	call CopyToModel
+;	call	CopyToModel
 ; Ok, that's all the setup done, let's get going
 
 	; Start outputting signals	
