@@ -29,7 +29,8 @@
 ;		  There may be some missing variables in the "model".  
 ;2018-05-13 ozh - rearrange memory & stick the "models" in banks 1 & 2, with main variables in bank 0
 ;		  at this point, w/o using the copy routines, envelope 0 works
-;
+;2018-05-13 ozh - added an indicator (Sustain LED on EG1) if there is an overrun in the interrupt service routine
+	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -215,7 +216,10 @@
 	RELEASE_CV
 	TIME_CV						; TIME is used directly
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
- ENDC
+ 
+	;Z209
+	OVERRUN_FLAG
+  ENDC
  
  ;bank 1
   CBLOCK 0x0A0
@@ -388,6 +392,18 @@ InterruptEnter:
 
 ;EndTest:
 	; end test
+
+CheckOverrun:
+	; Check for overrun (this is tested)
+	; an overrun is indicated by the #7 LED (of 8,i.e. sustain for second EG) being on.
+	btfsc	OVERRUN_FLAG,0	; if last LED is set (indicating an overrun)
+	bsf	LATC,6		; turn on next to last LED
+	; if we start w/ LEDLAST "off" and toggle twice (here and at the end of the Int Rtn)
+	; LED will be off most of the time
+	; if we "overrun" the interrupt routine, the light will stay on (until we overrun again)
+	movlw	BIT0
+	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
+
 	movlw	DAC0		;start with DAC0
 IntLoop:
 ;	call CopyFromModel
@@ -546,7 +562,8 @@ NextStage:
 TestPunch:
 ; Do we use the Punch stage?
 ;	Z209 - hard code Punch usage
-;	btfss	USE_ADSR		; Standard ADSR, so skip Punch
+;	comment out the next line to hardecode punch
+	btfss	USE_ADSR		; Standard ADSR, so skip Punch
 	goto	TestLooping
 
 SkipPunch:
@@ -852,11 +869,13 @@ InterruptExit:
 ;	goto	IntLoop
 ;FinishedEG1:
 ;	movlw	DAC1		;save DAC1 to model
-;	call	CopyToModel
+	call	CopyToModel
 ;	movlw	DAC0		; move DAC0 fm model
 ;	call	CopyFromModel
     	movlb D'0'		; PORTB
-    	bcf	LEDLAST
+	; second toggle for the CheckOverrun
+	movlw	BIT0
+	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
 	retfie
 
 ;------------------------------------------------------
@@ -1119,22 +1138,22 @@ CopyToModel:
 	    movf    FSR0H,w
 	    movwf   FSR0H_TEMP
 	    movf    FSR1L,w
-	    movwf   FSR0L_TEMP
+	    movwf   FSR1L_TEMP
 	    movf    FSR1H,w
-	    movwf   FSR0H_TEMP
+	    movwf   FSR1H_TEMP
 	; set up CopyMemoryBlock 
 	    clrf    FSR0H	    ;copy from bank 0 
-
-
+	    
+	    movf    DAC_NUMBER,w
 	    btfsc   WREG,7	    ; test bit 7 in w if it is clear, skip next instruction
 	    goto    CTMEG1
 CTMEG0:
-	    movlw   0x01	    ;copy to bank 1
+	    movlw   0x00	    ;copy to bank 1
 	    movwf   FSR1H
-	    movlw   0x020   ;#M0_STAGE	    ;choose the Model 0 as the destination
+	    movlw   0x0A0   ;#M0_STAGE	    ;choose the Model 0 as the destination
 	    goto    CTMContinue
 CTMEG1:
-	    movlw   0x02	    ;copy to bank 2
+	    movlw   0x01	    ;copy to bank 2
 	    movwf   FSR1H
 	    movlw   0x020   ;#M1_STAGE	    ;choose the Model 1 as the destination
 CTMContinue:
@@ -1150,18 +1169,17 @@ CopyFromModel:
 	    movf    FSR0H,w
 	    movwf   FSR0H_TEMP
 	    movf    FSR1L,w
-	    movwf   FSR0L_TEMP
+	    movwf   FSR1L_TEMP
 	    movf    FSR1H,w
-	    movwf   FSR0H_TEMP
+	    movwf   FSR1H_TEMP
 	; set up CopyMemoryBlock 
-	    clrf    FSR0H	    ;copy from bank 0 
 	    clrf    FSR1H	    ;copy to bank 0 
  
 	    btfsc   WREG,7	    ; test bit 7 in w if it is clear, skip next instruction
 	    goto    CFMEG1
 CFMEG0:
 	    bcf	    DAC_NUMBER,7     ; clear bit 7 of DAC_NUMBER ( assume this call comes at InterruptEnter )
-	    movlw   0x01	    ;copy from bank 1
+	    movlw   0x01	     ;copy from bank 1
 	    movwf   FSR0H
 	    movlw   0x20   ;#M0_STAGE	    ;choose the Model 0 as the source
 	    goto    CFMContinue
@@ -1190,9 +1208,9 @@ CopyDone:
 	    movwf   FSR0L
 	    movf    FSR0H_TEMP,w
 	    movwf   FSR0H
-	    movf    FSR0L_TEMP,w
+	    movf    FSR1L_TEMP,w
 	    movwf   FSR1L
-	    movf    FSR0H_TEMP,w
+	    movf    FSR1H_TEMP,w
 	    movwf   FSR1H
 	    return
 ;----------------------------------------
@@ -1223,7 +1241,18 @@ Main:
 	movlb	D'5'				; Bank 5		
 	movlw	B'00000001'			
 	movwf	T2CLKCON			; Fosc/4 = 8MHz clock for timer
-	movlw	B'00110000'			; Prescale /8 = 1MHz, Postscale /1, Tmr Off
+;	movlw	B'00110000'			; Prescale /8 = 1MHz, Postscale /1, Tmr Off
+	; overrun w/one copyToModel call @ /8 
+;	movlw	B'01000000'			; Prescale /16 = 500kHz, Postscale /1, Tmr Off
+	; overrun w/two copyToModel call @ /16
+	movlw	B'01010000'			; Prescale /32 = 250kHz, Postscale /1, Tmr Off
+	; @ /32 envelopes are fast,but not lighting fast  
+	; overrun occurs if copyFromModel is called
+;	movlw	B'01100000'			; Prescale /64 = 250kHz, Postscale /1, Tmr Off
+	; @ /64 envelopes are closer to Odyssey speeds, or slower
+	; overrun occurs if copyFromMOdel is called
+;	movlw	B'01110000'			; Prescale /128 = 125kHz, Postscale /1, Tmr Off
+	; envelopes are unusably slow
 	movwf	T2CON					
 	movlw	0x1F				; Set up Timer2 period register (/32)
 	; T2PR = 28Dh same as PR2
@@ -1326,11 +1355,13 @@ Main:
 	clrf	STATES
 	clrf	CHANGES
 
+	bcf	LEDLAST		    ; begin w/the last LED off - see CheckOverrun
+
 ; now copy the 20 registers which define the operation of the EG to both of the model (i.e. EG0 and EG 1)
 	movlw	DAC0
-;	call	CopyToModel
+	call	CopyToModel
 	movlw	DAC1		; same for both at this point
-;	call	CopyToModel
+	call	CopyToModel
 ; Ok, that's all the setup done, let's get going
 
 	; Start outputting signals	
