@@ -24,7 +24,11 @@
 ;2018-05-10 ozh - ADSR from faders is working!   Release issue solved (thx Tom W.!)
 ;2018-05-11 ozh - memory copy routine written/debugged to save/restore 20 essential variables.  
 ;		    this will support executing the interrupt code twice - once for each EG
-
+;2018-05-12 ozh - call CopyFromModel at the beginning of the interrupt breaks the code, even with just one EG
+;                 I'm not sure why.  stepping through the code seems to work correctly. (double check variables at offset 16)
+;		  There may be some missing variables in the "model".  
+;2018-05-13 ozh - rearrange memory & stick the "models" in banks 1 & 2, with main variables in bank 0
+;		  at this point, w/o using the copy routines, envelope 0 works
 ;
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -160,26 +164,7 @@
 ;------------------------------
 
  CBLOCK 0x020
-	; The working storage for the interpolation subroutine
-	INPUT_X_HI					; Two inputs, X and Y
-	INPUT_X_LO
-	INPUT_Y_HI
-	INPUT_Y_LO
-	CURVE_OUT_HI				; The final, interpolated, curve output
-	CURVE_OUT_LO
-	; Working storage for the 10x10-bit multiply subroutine
-	MULT_IN_HI
-	MULT_IN_LO					; CURVE_OUT is the other input
-	MULT_OUT_HI
-	MULT_OUT_LO
-
-	; The current control voltage(CV) values (8 bit)
-	ATTACK_CV					; These first four aren't actually used any more
-	DECAY_CV					; Instead we find a PHASE INC value and use that
-	SUSTAIN_CV
-	RELEASE_CV
-	TIME_CV						; TIME is used directly
-	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
+					
 
 	; begin 20 variables which are EG specific
 	; The current stage 
@@ -209,7 +194,31 @@
 	RELEASE_INC_LO
 	RELEASE_INC_MID
 	RELEASE_INC_HI	
-	
+		
+	; The working storage for the interpolation subroutine
+	INPUT_X_HI					; Two inputs, X and Y
+	INPUT_X_LO
+	INPUT_Y_HI
+	INPUT_Y_LO
+	CURVE_OUT_HI				; The final, interpolated, curve output
+	CURVE_OUT_LO
+	; Working storage for the 10x10-bit multiply subroutine
+	MULT_IN_HI
+	MULT_IN_LO					; CURVE_OUT is the other input
+	MULT_OUT_HI
+	MULT_OUT_LO
+
+	; The current control voltage(CV) values (8 bit)
+	ATTACK_CV					; These first four aren't actually used any more
+	DECAY_CV					; Instead we find a PHASE INC value and use that
+	SUSTAIN_CV
+	RELEASE_CV
+	TIME_CV						; TIME is used directly
+	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
+ ENDC
+ 
+ ;bank 1
+  CBLOCK 0x0A0
 	;Z209 - save a copy for each EG
 	; begin model for EG 0
 	; The current stage 
@@ -246,7 +255,10 @@
 	M0_OUTPUT_HI	;0x76
 	M0_OUTPUT_LO
 	; end EG 0
-	
+ ENDC
+ 
+ ;bank 2
+  CBLOCK 0x120	
 	; begin model for EG 1
 	; The current stage 
 	M1_STAGE	; 0=Wait, 1=Attack, 2=Punch, 3=Decay, 4=Sustain, 5=Release, 0=Wait
@@ -284,7 +296,10 @@
 	; end EG 1
 	
 	;Z209
-	GIE_STATE	;variable
+	FSR0L_TEMP
+	FSR0H_TEMP
+	FSR1L_TEMP
+	FSR1H_TEMP
  ENDC
 
 ; 0x70-0x7F  Common RAM - Special variables available in all banks
@@ -305,6 +320,7 @@
 	WORK_LO
 	DAC_NUMBER	;0x7A
 	LOOP_COUNTER
+	GIE_STATE	;variable
 ;	TEST_COUNTER_HI
 ;	TEST_COUNTER_LO
  ENDC
@@ -780,10 +796,10 @@ DACOutput:
 	lsrf	WORK_HI, f  ; move lsb into carry
 	rrf	WORK_LO, f  ; move cary into msb and lsb int
 
-	movlw DAC0	; TODO: change this hardcoded DAC0 to a variable
-        ; pass in the DAC # (in bit 7) via 
-	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
-        movwf DAC_NUMBER   
+;	movlw DAC0	; TODO: change this hardcoded DAC0 to a variable
+;        ; pass in the DAC # (in bit 7) via 
+;	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
+;        movwf DAC_NUMBER   
 	
 	; output the WORK_HI and WORK_LO to the DAC# (0 or 1) specified in W
 	movlb D'0'		; PORTB
@@ -828,9 +844,9 @@ WriteByteLoWait:
 ;	return	
 ;----------------------------------------
 InterruptExit:
-;	btfsc	DAC_NUMBER,7		; if bit bit 7 is set, we finished DAC1
+	btfsc	DAC_NUMBER,7		; if bit bit 7 is set, we finished DAC1
 ;	goto	FinishedEG1
-;	movlw	DAC0
+	movlw	DAC0
 ;	call	CopyToModel
 ;	movlw	DAC1
 ;	goto	IntLoop
@@ -1097,17 +1113,30 @@ DoADConversion:
 ; FSR1 is destination
 	
 CopyToModel: 
+	; save existing FSR values
+	    movf    FSR0L,w
+	    movwf   FSR0L_TEMP
+	    movf    FSR0H,w
+	    movwf   FSR0H_TEMP
+	    movf    FSR1L,w
+	    movwf   FSR0L_TEMP
+	    movf    FSR1H,w
+	    movwf   FSR0H_TEMP
 	; set up CopyMemoryBlock 
 	    clrf    FSR0H	    ;copy from bank 0 
-	    clrf    FSR1H	    ;copy to bank 0
+
 
 	    btfsc   WREG,7	    ; test bit 7 in w if it is clear, skip next instruction
 	    goto    CTMEG1
 CTMEG0:
-	    movlw   #M0_STAGE	    ;choose the Model 0 as the destination
+	    movlw   0x01	    ;copy to bank 1
+	    movwf   FSR1H
+	    movlw   0x020   ;#M0_STAGE	    ;choose the Model 0 as the destination
 	    goto    CTMContinue
 CTMEG1:
-	    movlw   #M1_STAGE	    ;choose the Model 1 as the destination
+	    movlw   0x02	    ;copy to bank 2
+	    movwf   FSR1H
+	    movlw   0x020   ;#M1_STAGE	    ;choose the Model 1 as the destination
 CTMContinue:
 	    movwf   FSR1L	    ;model is destination
 	    movlw   #STAGE          ;get the address of STAGE variable 
@@ -1115,6 +1144,15 @@ CTMContinue:
 	    goto    CopyMemoryBlock
 	    
 CopyFromModel:
+	; save existing FSR values
+	    movf    FSR0L,w
+	    movwf   FSR0L_TEMP
+	    movf    FSR0H,w
+	    movwf   FSR0H_TEMP
+	    movf    FSR1L,w
+	    movwf   FSR0L_TEMP
+	    movf    FSR1H,w
+	    movwf   FSR0H_TEMP
 	; set up CopyMemoryBlock 
 	    clrf    FSR0H	    ;copy from bank 0 
 	    clrf    FSR1H	    ;copy to bank 0 
@@ -1123,11 +1161,15 @@ CopyFromModel:
 	    goto    CFMEG1
 CFMEG0:
 	    bcf	    DAC_NUMBER,7     ; clear bit 7 of DAC_NUMBER ( assume this call comes at InterruptEnter )
-	    movlw   #M0_STAGE	    ;choose the Model 0 as the source
+	    movlw   0x01	    ;copy from bank 1
+	    movwf   FSR0H
+	    movlw   0x20   ;#M0_STAGE	    ;choose the Model 0 as the source
 	    goto    CFMContinue
 CFMEG1:
 	    bsf	    DAC_NUMBER,7     ; set bit 7 of DAC_NUMBER
-	    movlw   #M1_STAGE	    ;choose the Model 1 as the source
+	    movlw   0x02	    ;copy from bank 2
+	    movwf   FSR0H
+	    movlw   0x20    ;#M1_STAGE	    ;choose the Model 1 as the source
 CFMContinue:
 	    movwf   FSR0L	    ;model is source
 	    movlw  #STAGE           ;get the address of STAGE variable 
@@ -1142,7 +1184,16 @@ CopyLoop:
 	    movwi   INDF1++
 	    decfsz  LOOP_COUNTER
 	    bra	    CopyLoop
-CopyDone:		
+CopyDone:
+	; restore existing FSR values
+	    movf    FSR0L_TEMP,w
+	    movwf   FSR0L
+	    movf    FSR0H_TEMP,w
+	    movwf   FSR0H
+	    movf    FSR0L_TEMP,w
+	    movwf   FSR1L
+	    movf    FSR0H_TEMP,w
+	    movwf   FSR1H
 	    return
 ;----------------------------------------
 ;	The main program
