@@ -869,7 +869,7 @@ InterruptExit:
 ;	goto	IntLoop
 ;FinishedEG1:
 ;	movlw	DAC1		;save DAC1 to model
-	call	CopyToModel
+;	call	CopyToModel
 ;	movlw	DAC0		; move DAC0 fm model
 ;	call	CopyFromModel
     	movlb D'0'		; PORTB
@@ -1229,6 +1229,8 @@ Main:
 	bcf	GATE_LED1
 	; end test
 
+	clrf	OVERRUN_FLAG		;init this flag
+	
 	; Set up the interrupts (INTCON is a SFR available all banks)
 	bsf	INTCON, GIE		; Enable interrupts
 	bsf	INTCON, PEIE		; Enable peripheral interrupts
@@ -1241,11 +1243,11 @@ Main:
 	movlb	D'5'				; Bank 5		
 	movlw	B'00000001'			
 	movwf	T2CLKCON			; Fosc/4 = 8MHz clock for timer
-;	movlw	B'00110000'			; Prescale /8 = 1MHz, Postscale /1, Tmr Off
+	movlw	B'00110000'			; Prescale /8 = 1MHz, Postscale /1, Tmr Off
 	; overrun w/one copyToModel call @ /8 
 ;	movlw	B'01000000'			; Prescale /16 = 500kHz, Postscale /1, Tmr Off
 	; overrun w/two copyToModel call @ /16
-	movlw	B'01010000'			; Prescale /32 = 250kHz, Postscale /1, Tmr Off
+;	movlw	B'01010000'			; Prescale /32 = 250kHz, Postscale /1, Tmr Off
 	; @ /32 envelopes are fast,but not lighting fast  
 	; overrun occurs if copyFromModel is called
 ;	movlw	B'01100000'			; Prescale /64 = 250kHz, Postscale /1, Tmr Off
@@ -1358,10 +1360,10 @@ Main:
 	bcf	LEDLAST		    ; begin w/the last LED off - see CheckOverrun
 
 ; now copy the 20 registers which define the operation of the EG to both of the model (i.e. EG0 and EG 1)
-	movlw	DAC0
-	call	CopyToModel
-	movlw	DAC1		; same for both at this point
-	call	CopyToModel
+;	movlw	DAC0
+;	call	CopyToModel
+;	movlw	DAC1		; same for both at this point
+;	call	CopyToModel
 ; Ok, that's all the setup done, let's get going
 
 	; Start outputting signals	
