@@ -165,8 +165,6 @@
 ;------------------------------
 
  CBLOCK 0x020
-					
-
 	; begin 20 variables which are EG specific
 	; The current stage 
 	STAGE	; 0=Wait, 1=Attack, 2=Punch, 3=Decay, 4=Sustain, 5=Release, 0=Wait
@@ -218,6 +216,10 @@
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
  
 	;Z209
+	FSR0L_TEMP
+	FSR0H_TEMP
+	FSR1L_TEMP
+	FSR1H_TEMP
 	OVERRUN_FLAG
   ENDC
  
@@ -298,12 +300,6 @@
 	M1_OUTPUT_HI	;0x76
 	M1_OUTPUT_LO
 	; end EG 1
-	
-	;Z209
-	FSR0L_TEMP
-	FSR0H_TEMP
-	FSR1L_TEMP
-	FSR1H_TEMP
  ENDC
 
 ; 0x70-0x7F  Common RAM - Special variables available in all banks
@@ -1142,22 +1138,23 @@ CopyToModel:
 	    movf    FSR1H,w
 	    movwf   FSR1H_TEMP
 	; set up CopyMemoryBlock 
-	    clrf    FSR0H	    ;copy from bank 0 
 	    
 	    movf    DAC_NUMBER,w
 	    btfsc   WREG,7	    ; test bit 7 in w if it is clear, skip next instruction
 	    goto    CTMEG1
 CTMEG0:
-	    movlw   0x00	    ;copy to bank 1
+	    movlw   0x00	    ;copy to bank 1 (128 byte banks!)
 	    movwf   FSR1H
-	    movlw   0x0A0   ;#M0_STAGE	    ;choose the Model 0 as the destination
+	    movlw   0xA0   ;#M0_STAGE	    ;choose the Model 0 as the destination
 	    goto    CTMContinue
 CTMEG1:
 	    movlw   0x01	    ;copy to bank 2
 	    movwf   FSR1H
-	    movlw   0x020   ;#M1_STAGE	    ;choose the Model 1 as the destination
+	    movlw   0x20   ;#M1_STAGE	    ;choose the Model 1 as the destination
 CTMContinue:
 	    movwf   FSR1L	    ;model is destination
+
+	    clrf    FSR0H	    ;copy from bank 0 
 	    movlw   #STAGE          ;get the address of STAGE variable 
 	    movwf   FSR0L	    ;put it in the source FSR
 	    goto    CopyMemoryBlock
@@ -1173,7 +1170,6 @@ CopyFromModel:
 	    movf    FSR1H,w
 	    movwf   FSR1H_TEMP
 	; set up CopyMemoryBlock 
-	    clrf    FSR1H	    ;copy to bank 0 
  
 	    btfsc   WREG,7	    ; test bit 7 in w if it is clear, skip next instruction
 	    goto    CFMEG1
@@ -1190,6 +1186,8 @@ CFMEG1:
 	    movlw   0x20    ;#M1_STAGE	    ;choose the Model 1 as the source
 CFMContinue:
 	    movwf   FSR0L	    ;model is source
+	    
+	    clrf    FSR1H	    ;copy to bank 0 
 	    movlw  #STAGE           ;get the address of STAGE variable 
 	    movwf   FSR1L	    ;put it in the destination FSR
 	    goto    CopyMemoryBlock
@@ -1360,10 +1358,10 @@ Main:
 	bcf	LEDLAST		    ; begin w/the last LED off - see CheckOverrun
 
 ; now copy the 20 registers which define the operation of the EG to both of the model (i.e. EG0 and EG 1)
-;	movlw	DAC0
-;	call	CopyToModel
-;	movlw	DAC1		; same for both at this point
-;	call	CopyToModel
+	movlw	DAC0
+	call	CopyToModel
+	movlw	DAC1		; same for both at this point
+	call	CopyToModel
 ; Ok, that's all the setup done, let's get going
 
 	; Start outputting signals	
