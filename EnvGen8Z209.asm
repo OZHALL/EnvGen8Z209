@@ -30,6 +30,9 @@
 ;2018-05-13 ozh - rearrange memory & stick the "models" in banks 1 & 2, with main variables in bank 0
 ;		  at this point, w/o using the copy routines, envelope 0 works
 ;2018-05-13 ozh - added an indicator (Sustain LED on EG1) if there is an overrun in the interrupt service routine
+;2018-05-15 ozh - move START_HI/_LO and OUTPUT_HI/_LO to bank switched ram
+;		  FSR0 is used in the main routine.  FSR1 in the interrupt routine.
+;		  save off FSR0 on entering the Int Svc Rtn (ISR) and restore it just before retfie
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -193,6 +196,13 @@
 	RELEASE_INC_LO
 	RELEASE_INC_MID
 	RELEASE_INC_HI	
+
+	; The current output level when an Attack or Release starts
+	START_HI	;0x74
+	START_LO
+	; The 12 bit output level
+	OUTPUT_HI	;0x76
+	OUTPUT_LO
 		
 	; The working storage for the interpolation subroutine
 	INPUT_X_HI					; Two inputs, X and Y
@@ -309,12 +319,7 @@
 	; The current A/D channel and value
 	ADC_CHANNEL	;0x72
 	ADC_VALUE
-	; The current output level when an Attack or Release starts
-	START_HI	;0x74
-	START_LO
-	; The 12 bit output level
-	OUTPUT_HI	;0x76
-	OUTPUT_LO
+
 	; temp variables
 	WORK_HI		;0x78
 	WORK_LO
@@ -370,6 +375,11 @@
  org     0x004					; Interrupt vector location
 
 InterruptEnter:
+; save existing FSR0 values (which are used in Main (FSR1 only used in ISR)
+	movf    FSR0L,w
+	movwf   FSR0L_TEMP
+	movf    FSR0H,w
+	movwf   FSR0H_TEMP
 ; Sample rate timebase at 31.25KHz
 	movlb	D'14'				; Bank 14
 	btfss	PIR4, TMR2IF			; Check if TMR2 interrupt
@@ -872,6 +882,11 @@ InterruptExit:
 	; second toggle for the CheckOverrun
 	movlw	BIT0
 	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
+; restore existing FSR values
+	movf    FSR0L_TEMP,w
+	movwf   FSR0L
+	movf    FSR0H_TEMP,w
+	movwf   FSR0H
 	retfie
 
 ;------------------------------------------------------
@@ -1128,15 +1143,15 @@ DoADConversion:
 ; FSR1 is destination
 	
 CopyToModel: 
-	; save existing FSR values
-	    movf    FSR0L,w
-	    movwf   FSR0L_TEMP
-	    movf    FSR0H,w
-	    movwf   FSR0H_TEMP
-	    movf    FSR1L,w
-	    movwf   FSR1L_TEMP
-	    movf    FSR1H,w
-	    movwf   FSR1H_TEMP
+;	; save existing FSR values
+;	    movf    FSR0L,w
+;	    movwf   FSR0L_TEMP
+;	    movf    FSR0H,w
+;	    movwf   FSR0H_TEMP
+;	    movf    FSR1L,w
+;	    movwf   FSR1L_TEMP
+;	    movf    FSR1H,w
+;	    movwf   FSR1H_TEMP
 	; set up CopyMemoryBlock 
 	    
 	    movf    DAC_NUMBER,w
@@ -1160,15 +1175,15 @@ CTMContinue:
 	    goto    CopyMemoryBlock
 	    
 CopyFromModel:
-	; save existing FSR values
-	    movf    FSR0L,w
-	    movwf   FSR0L_TEMP
-	    movf    FSR0H,w
-	    movwf   FSR0H_TEMP
-	    movf    FSR1L,w
-	    movwf   FSR1L_TEMP
-	    movf    FSR1H,w
-	    movwf   FSR1H_TEMP
+;	; save existing FSR values
+;	    movf    FSR0L,w
+;	    movwf   FSR0L_TEMP
+;	    movf    FSR0H,w
+;	    movwf   FSR0H_TEMP
+;	    movf    FSR1L,w
+;	    movwf   FSR1L_TEMP
+;	    movf    FSR1H,w
+;	    movwf   FSR1H_TEMP
 	; set up CopyMemoryBlock 
  
 	    btfsc   WREG,7	    ; test bit 7 in w if it is clear, skip next instruction
@@ -1201,15 +1216,15 @@ CopyLoop:
 	    decfsz  LOOP_COUNTER
 	    bra	    CopyLoop
 CopyDone:
-	; restore existing FSR values
-	    movf    FSR0L_TEMP,w
-	    movwf   FSR0L
-	    movf    FSR0H_TEMP,w
-	    movwf   FSR0H
-	    movf    FSR1L_TEMP,w
-	    movwf   FSR1L
-	    movf    FSR1H_TEMP,w
-	    movwf   FSR1H
+;	; restore existing FSR values
+;	    movf    FSR0L_TEMP,w
+;	    movwf   FSR0L
+;	    movf    FSR0H_TEMP,w
+;	    movwf   FSR0H
+;	    movf    FSR1L_TEMP,w
+;	    movwf   FSR1L
+;	    movf    FSR1H_TEMP,w
+;	    movwf   FSR1H
 	    return
 ;----------------------------------------
 ;	The main program
