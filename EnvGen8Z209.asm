@@ -33,6 +33,7 @@
 ;2018-05-15 ozh - move START_HI/_LO and OUTPUT_HI/_LO to bank switched ram
 ;		  FSR0 is used in the main routine.  FSR1 in the interrupt routine.
 ;		  save off FSR0 on entering the Int Svc Rtn (ISR) and restore it just before retfie
+;2018-05-15 ozh - clean up the Model Copy routines
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -198,10 +199,10 @@
 	RELEASE_INC_HI	
 
 	; The current output level when an Attack or Release starts
-	START_HI	;0x74
+	START_HI	
 	START_LO
 	; The 12 bit output level
-	OUTPUT_HI	;0x76
+	OUTPUT_HI	
 	OUTPUT_LO
 		
 	; The working storage for the interpolation subroutine
@@ -226,7 +227,7 @@
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
  
 	;Z209
-	FSR0L_TEMP
+	FSR0L_TEMP  ;0x48
 	FSR0H_TEMP
 	FSR1L_TEMP
 	FSR1H_TEMP
@@ -265,10 +266,10 @@
 	M0_RELEASE_INC_MID
 	M0_RELEASE_INC_HI
 ;	; The current output level when an Attack or Release starts
-	M0_START_HI	;0x74
+	M0_START_HI	
 	M0_START_LO
 	; The 12 bit output level
-	M0_OUTPUT_HI	;0x76
+	M0_OUTPUT_HI	
 	M0_OUTPUT_LO
 	; end EG 0
  ENDC
@@ -304,10 +305,10 @@
 	M1_RELEASE_INC_MID
 	M1_RELEASE_INC_HI
 	; The current output level when an Attack or Release starts
-	M1_START_HI	;0x74
+	M1_START_HI	
 	M1_START_LO
 	; The 12 bit output level
-	M1_OUTPUT_HI	;0x76
+	M1_OUTPUT_HI	
 	M1_OUTPUT_LO
 	; end EG 1
  ENDC
@@ -793,15 +794,6 @@ ReleaseScaling:
 ; Set DAC Output
 ;---------------------------------------
 DACOutput:
-	; Load 10-bit DAC
-;	movlb	D'11'				; All DACs are in Bank 11
-;	movf	OUTPUT_LO, w		; Move output data to DAC1
-;	movwf	DAC1REFL
-;	movf	OUTPUT_HI, w
-;	movwf	DAC1REFH	
-;	movlw	B'00000001'
-;	movwf	DACLD				; Load DAC1 alone
-
 ;	output to MCP4922, not the internal DAC	
 
 	; take 16 bits down to 12 bits
@@ -867,16 +859,16 @@ WriteByteLoWait:
 ;	return	
 ;----------------------------------------
 InterruptExit:
-	btfsc	DAC_NUMBER,7		; if bit bit 7 is set, we finished DAC1
-;	goto	FinishedEG1
+	btfsc	DAC_NUMBER,7		; if bit 7 is set, we finished DAC1
+	goto	FinishedEG1
 	movlw	DAC0
 ;	call	CopyToModel
 ;	movlw	DAC1
 ;	goto	IntLoop
-;FinishedEG1:
+FinishedEG1:
 ;	movlw	DAC1		;save DAC1 to model
 ;	call	CopyToModel
-;	movlw	DAC0		; move DAC0 fm model
+;	movlw	DAC0		; move DAC0 fm model before we exit
 ;	call	CopyFromModel
     	movlb D'0'		; PORTB
 	; second toggle for the CheckOverrun
@@ -1143,23 +1135,12 @@ DoADConversion:
 ; FSR1 is destination
 	
 CopyToModel: 
-;	; save existing FSR values
-;	    movf    FSR0L,w
-;	    movwf   FSR0L_TEMP
-;	    movf    FSR0H,w
-;	    movwf   FSR0H_TEMP
-;	    movf    FSR1L,w
-;	    movwf   FSR1L_TEMP
-;	    movf    FSR1H,w
-;	    movwf   FSR1H_TEMP
-	; set up CopyMemoryBlock 
-	    
-	    movf    DAC_NUMBER,w
+	; note: process EG0 or EG1 based on bit 7 of w
+	; set up CopyMemoryBlock     
 	    btfsc   WREG,7	    ; test bit 7 in w if it is clear, skip next instruction
 	    goto    CTMEG1
-CTMEG0:
-	    movlw   0x00	    ;copy to bank 1 (128 byte banks!)
-	    movwf   FSR1H
+CTMEG0:	    
+	    clrf   FSR1H	    ;copy to bank 1 (note: 128 byte banks!)
 	    movlw   0xA0   ;#M0_STAGE	    ;choose the Model 0 as the destination
 	    goto    CTMContinue
 CTMEG1:
@@ -1175,28 +1156,20 @@ CTMContinue:
 	    goto    CopyMemoryBlock
 	    
 CopyFromModel:
-;	; save existing FSR values
-;	    movf    FSR0L,w
-;	    movwf   FSR0L_TEMP
-;	    movf    FSR0H,w
-;	    movwf   FSR0H_TEMP
-;	    movf    FSR1L,w
-;	    movwf   FSR1L_TEMP
-;	    movf    FSR1H,w
-;	    movwf   FSR1H_TEMP
+	; note: process EG0 or EG1 based on bit 7 of w
 	; set up CopyMemoryBlock 
- 
+
 	    btfsc   WREG,7	    ; test bit 7 in w if it is clear, skip next instruction
 	    goto    CFMEG1
 CFMEG0:
 	    bcf	    DAC_NUMBER,7     ; clear bit 7 of DAC_NUMBER ( assume this call comes at InterruptEnter )
-	    movlw   0x01	     ;copy from bank 1
+	    movlw   0x00	     ;copy from bank 1 (128 byte banks)
 	    movwf   FSR0H
-	    movlw   0x20   ;#M0_STAGE	    ;choose the Model 0 as the source
+	    movlw   0xA0   ;#M0_STAGE	    ;choose the Model 0 as the source
 	    goto    CFMContinue
 CFMEG1:
 	    bsf	    DAC_NUMBER,7     ; set bit 7 of DAC_NUMBER
-	    movlw   0x02	    ;copy from bank 2
+	    movlw   0x01	    ;copy from bank 2
 	    movwf   FSR0H
 	    movlw   0x20    ;#M1_STAGE	    ;choose the Model 1 as the source
 CFMContinue:
@@ -1208,7 +1181,7 @@ CFMContinue:
 	    goto    CopyMemoryBlock
 
 CopyMemoryBlock:	    
-	    movlw   d'20'	    ; # of bytes to move
+	    movlw   d'24'	    ; # of bytes to move
 	    movwf   LOOP_COUNTER
 CopyLoop:
 	    moviw   INDF0++
@@ -1216,15 +1189,6 @@ CopyLoop:
 	    decfsz  LOOP_COUNTER
 	    bra	    CopyLoop
 CopyDone:
-;	; restore existing FSR values
-;	    movf    FSR0L_TEMP,w
-;	    movwf   FSR0L
-;	    movf    FSR0H_TEMP,w
-;	    movwf   FSR0H
-;	    movf    FSR1L_TEMP,w
-;	    movwf   FSR1L
-;	    movf    FSR1H_TEMP,w
-;	    movwf   FSR1H
 	    return
 ;----------------------------------------
 ;	The main program
@@ -1379,7 +1343,7 @@ Main:
 	call	CopyToModel
 ; Ok, that's all the setup done, let's get going
 
-	; Start outputting signals	
+	; Start outputting signals (enable TMR2, start interrupts )	
 	movlb	D'5'				; Bank 5	
 	bsf	T2CON, TMR2ON		; Turn timer 2 on	
 
@@ -1752,7 +1716,7 @@ Init_Osc:
 ;-------------------------------------------------------
 
 ; org     0x300					; Need to start at 0x100 boundary
- org     0xA00					; Need to start at 0x100 boundary
+ org     0x400					; Need to start at 0x100 boundary
 ControlLookupHi:
 	dt	D'11', D'10', D'10', D'9', D'8', D'8', D'7', D'7'
 	dt	D'7', D'6', D'6', D'5', D'5', D'5', D'5', D'4'
@@ -1878,7 +1842,7 @@ ControlLookupLo:
 ; which makes life marginally simpler.
 ;------------------------------------------------------------------------------
 ; org     0x600					; Need to start at page boundary
- org     0xD00					; Need to start at page boundary
+ org     0x700					; Need to start at page boundary
 AttackCurve:
 	dt	D'0', D'0', D'231', D'1', D'202', D'3', D'171', D'5'
 	dt	D'138', D'7', D'101', D'9', D'62', D'11', D'20', D'13'
@@ -1951,7 +1915,7 @@ AttackCurve:
 	dt	D'136', D'250', D'0', D'251', D'120', D'251', D'239', D'251'
 	dt	D'101', D'252', D'219', D'252', D'80', D'253', D'196', D'253'
 	dt	D'55', D'254', D'170', D'254', D'28', D'255', D'142', D'255'
- org     0xF00					; Need to start at page boundary
+ org     0x900					; Need to start at page boundary
 	; One extra to make interp simple
 	dt	D'255', D'255'
 
