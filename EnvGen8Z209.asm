@@ -41,6 +41,7 @@
 ;          * * * EG0 works, but the bank switching is completely untested * * *
 ;2018-05-22 ozh - hardcoded bank 1 (for EG1) and it works, if you preserve BSR before accessing PORTC and LATB
 ;		  I have the second Sustain controlling EG0 correctly
+;2018-05-23 ozh - this is starting to work.  I have an envelope output on DAC1 (vs DAC0).  attack/decay are coming from EG0 :(
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -406,7 +407,7 @@ InterruptEnter:
 	goto	InterruptExit
 	bcf	PIR4, TMR2IF			; Clear TMR2 interrupt flag
 
-	movlb	D'0'				; Bank 0 ;D'1' ; Bank 2 ; 
+	movlb	D'2' ; Bank 2 ; D'0'				; Bank 0 ;
 ;	;Test ONLY Z209 code  (16 bit counter to toggle Sustain LED of ADSR 0)	
 ;	incfsz	TEST_COUNTER_LO, f
 ;	goto	EndTest
@@ -430,13 +431,13 @@ CheckOverrun:
 	movlw	BIT0
 	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
 ;default - DAC0
-	movlw	DAC0		;start with DAC0
+	movlw	DAC1;DAC0		;start with DAC0
 	bcf	DAC_NUMBER,7    ; clear bit 7 of DAC_NUMBER 
 IntLoop:
 	btfss	WREG,7		; check DAC0 or DAC1
 	goto	ILContinue	; if bit 7 was set, this goto gets skipped
 	; set up for DAC1
-	movlb	D'1'		; Bank 2 - EG1 (128 byte banks)
+	movlb	D'2'		; Bank 2 - EG1 (128 byte banks)
 	bsf	DAC_NUMBER,7     ; set bit 7 of DAC_NUMBER 
 ILContinue:	;process EG0 or EG1
     
@@ -1359,7 +1360,7 @@ Main:
 	movlb	D'5'				; Bank 5	
 	bsf	T2CON, TMR2ON		; Turn timer 2 on	
 
-
+	movlb	D'0'				; Bank 0
 MainLoop:
 	; Change to next A/D channel
 	incf	ADC_CHANNEL, f
@@ -1376,7 +1377,7 @@ SelectADCChannel:
 	goto	Attack1CV
 	goto	Decay1CV
 	goto	Sustain1CV
-;	goto	Release1CV
+	goto	Release1CV
 	; don't process these channels, leave them hardcoded
 ;	goto	TimeCV
 ;	goto	ModeCV
@@ -1413,12 +1414,13 @@ AttackCV:
 	goto	MainLoop
 
 Attack1CV:
-        movfw	BSR		;preserve BSR
-	movwf	TEMP_BSR
+	;DoADConversion will set bank to 0
 	movlw	D'4'		; ANA4
 	call	DoADConversion
-	
-	movlb	D'1'		; Bank 2
+
+	movfw	BSR		;preserve BSR
+	movwf	TEMP_BSR
+	movlb	D'2'		; Bank 2
 	movwf	ATTACK_CV
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
@@ -1442,7 +1444,6 @@ Attack1CV:
 	goto	MainLoop
 
 	
-Decay1CV:	; TODO: replicate DecayCV
 ; Update the Decay CV
 DecayCV:
 	movlw	D'1'		; ANA1
@@ -1467,7 +1468,35 @@ DecayCV:
 	movwf	DECAY_INC_LO
 	goto	MainLoop
 
+Decay1CV:	
+	movlw	D'5'		; ANA5
+	call	DoADConversion
 
+	movfw	BSR		;preserve BSR
+	movwf	TEMP_BSR
+	movlb	D'2'		; Bank 2
+	movwf	DECAY_CV
+	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
+	movfw	TIME_CV
+	subwf	DECAY_CV, w
+	btfss	BORROW
+	movlw	D'0'				; If value is <0, use minimum
+	; Get the new phase increment for the DECAY stage
+	movwf	FSR0L				; Store index
+	movlw	HIGH ControlLookupHi; Get table page
+	movwf	FSR0H
+	movf	INDF0, w			; Get high byte
+	movwf	DECAY_INC_HI		; Store it
+	incf	FSR0H, f			; Move to mid table
+	movf	INDF0, w			; etc..
+	movwf	DECAY_INC_MID
+	incf	FSR0H, f			; Move to lo table
+	movf	INDF0, w
+	movwf	DECAY_INC_LO
+	movf	TEMP_BSR,w		; restore BSR
+	movwf	BSR
+	goto	MainLoop
+	
 ; Update the Sustain CV
 SustainCV:
 	movlw	D'2'		; ANA2
@@ -1479,7 +1508,7 @@ SustainCV:
 Sustain1CV:
 	movlw	D'6'		; ANA6
 	call	DoADConversion
-	movlb	D'1'		; change to bank 2
+	movlb	D'2'		; change to bank 2
 	movwf	SUSTAIN_CV	; Simply store this one- easy!
 	movlb	D'0'		; change back to bank 0
 	goto	MainLoop
@@ -1509,91 +1538,34 @@ ReleaseCV:
 	movwf	RELEASE_INC_LO
 	goto	MainLoop
 
-
-; Update the Time CV
-TimeCV:
-	movlw	b'00011101'			; AN7, ADC On
+; Update the Release CV
+Release1CV:
+	movlw	D'7'		; ANA7
 	call	DoADConversion
-	; Put the value into TIME_CV where we can work on it
-	movwf	TIME_CV
-	; Reduce the resolution of the TIME CV so it isn't so extreme
-	lsrf	TIME_CV, f			; 0-127 Time CV
-	; Note that there is no glitch problem here, since the
-	; value can be updated in a single instruction.
-	goto	MainLoop
 
-	
-; Update the Mode (ENV, LOOP, LFO)
-ModeCV:
-	movlw	b'00001101'			; AN3, ADC On
-	call	DoADConversion
-	; If both the top bits are set, we have LFO mode
-	; If neither top bit is set, we have Envelope mode
-	; Otherwise we have Looping envelope mode
-	; There's no hysteresis on this since I assume that the
-	; possible values are far apart.
-	andlw	B'11000000'		; Get just the top two bits
-	xorwf	MODE_CV, w		; Is it different from the current mode?
-	btfsc	ZERO
-	goto	MainLoop		; No, it's not
-	; Store the new Mode CV
-	movf	ADC_VALUE, w
-	andlw	B'11000000'		; Get just the top two bits
-	movwf	MODE_CV
-
-; Now set one of the three modes from the MODE_CV value
-TestEnvelopeMode:
-	; Both bits clear is Envelope Mode
-	btfsc	MODE_CV, 7		; Test the highest bit
-	goto	TestLFOMode
-	btfsc	MODE_CV, 6		; Test the next-highest bit
-	goto	TestLFOMode
-	; Ok, we're in Envelope Mode
-SetEnvelopeMode:
-	bcf		LOOPING			; A normal envelope
-	bcf		LFO_MODE
-	goto	MainLoop
-
-TestLFOMode:
-	; Both bits set is LFO mode
-	btfss	MODE_CV, 7		; Test the highest bit
-	goto	SetLoopingEnvelopeMode
-	btfss	MODE_CV, 6		; Test the next-highest bit
-	goto	SetLoopingEnvelopeMode
-	; Ok, so we're in LFO Mode
-SetLFOMode:
-	bsf		LOOPING			; This mode loops forever
-	bsf		LFO_MODE		; and ignores GATE and TRIGGER
-	; Start the envelope
-	clrf	PHASE_HI
-	clrf	PHASE_MID
-	clrf	PHASE_LO
-	movf	OUTPUT_HI, w	; What's the current output level?
-	movwf	START_HI
-	movf	OUTPUT_LO, w
-	movwf	START_LO
-	movlw	D'1'			; Start the attack
-	movwf	STAGE
-	goto	MainLoop
-
-; If we got to here, there's only one other option
-SetLoopingEnvelopeMode:
-	bsf		LOOPING			; This mode loops, but only
-	bcf		LFO_MODE		; while the GATE is high
-	; Are we stuck in the Sustain stage?
-	movf	STAGE, w
-	xorlw	D'4'
-	btfss	ZERO			; Is STAGE==4 yet? (SUSTAIN)
-	goto	MainLoop		; No, so that's fine
-	; Yes, we're in the Sustain stage, so jump directly to Release
-	movf	OUTPUT_HI, w	; What's the current output level?
-	movwf	START_HI
-	movf	OUTPUT_LO, w
-	movwf	START_LO
-	; Move to RELEASE stage
-	movlw	D'5'
-	movwf	STAGE
-	; Ok, all done
+	movfw	BSR		;preserve BSR
+	movwf	TEMP_BSR
+	movlb	D'2'		; Bank 2
+	movwf	RELEASE_CV
+	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
+	movfw	TIME_CV
+	subwf	RELEASE_CV, w
+	btfss	BORROW
+	movlw	D'0'				; If value is <0, use minimum
+	; Get the new phase increment for the RELEASE stage
+	movwf	FSR0L				; Store index
+	movlw	HIGH ControlLookupHi; Get table page
+	movwf	FSR0H
+	movf	INDF0, w			; Get high byte
+	movwf	RELEASE_INC_HI		; Store it
+	incf	FSR0H, f			; Move to mid table
+	movf	INDF0, w			; etc..
+	movwf	RELEASE_INC_MID
+	incf	FSR0H, f			; Move to lo table
+	movf	INDF0, w
+	movwf	RELEASE_INC_LO
+	movf	TEMP_BSR,w		; restore BSR
+	movwf	BSR
 	goto	MainLoop
 	
     ; ***** Miscellaneous Routines*********************************************
