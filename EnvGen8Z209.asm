@@ -39,6 +39,8 @@
 ;		  note also that the EG0 model is mapped to the "original" variables.  
 ;                 We've just added alternate M0_ names to the same memory locations
 ;          * * * EG0 works, but the bank switching is completely untested * * *
+;2018-05-22 ozh - hardcoded bank 1 (for EG1) and it works, if you preserve BSR before accessing PORTC and LATB
+;		  I have the second Sustain controlling EG0 correctly
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -209,7 +211,16 @@
 	; The 12 bit output level
 	OUTPUT_HI	
 	OUTPUT_LO
-		
+	
+	; The current control voltage(CV) values (8 bit)
+	ATTACK_CV					; These first four aren't actually used any more
+	DECAY_CV					; Instead we find a PHASE INC value and use that
+	SUSTAIN_CV
+	RELEASE_CV
+;	ATTACK1_CV					; These first four aren't actually used any more
+;	DECAY1_CV					; Instead we find a PHASE INC value and use that
+;	SUSTAIN1_CV
+;	RELEASE1_CV		
 	; The working storage for the interpolation subroutine
 	INPUT_X_HI					; Two inputs, X and Y
 	INPUT_X_LO
@@ -223,13 +234,11 @@
 	MULT_OUT_HI
 	MULT_OUT_LO
 
-	; The current control voltage(CV) values (8 bit)
-	ATTACK_CV					; These first four aren't actually used any more
-	DECAY_CV					; Instead we find a PHASE INC value and use that
-	SUSTAIN_CV
-	RELEASE_CV
+
 	TIME_CV						; TIME is used directly
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
+	
+
 
   ENDC
  
@@ -270,6 +279,12 @@
 	; The 12 bit output level
 	M0_OUTPUT_HI	
 	M0_OUTPUT_LO
+
+	; The current control voltage(CV) values (8 bit)
+	M0_ATTACK_CV					; These first four aren't actually used any more
+	M0_DECAY_CV					; Instead we find a PHASE INC value and use that
+	M0_SUSTAIN_CV
+	M0_RELEASE_CV
 	; end EG 0
  ENDC
  
@@ -309,6 +324,12 @@
 	; The 12 bit output level
 	M1_OUTPUT_HI	
 	M1_OUTPUT_LO
+	
+	; The current control voltage(CV) values (8 bit)
+	M1_ATTACK_CV					; These first four aren't actually used any more
+	M1_DECAY_CV					; Instead we find a PHASE INC value and use that
+	M1_SUSTAIN_CV
+	M1_RELEASE_CV
 	; end EG 1
  ENDC
 
@@ -325,8 +346,11 @@
 	WORK_LO
 	DAC_NUMBER	;0x7A
 	LOOP_COUNTER
-	GIE_STATE	;variable
+	GIE_STATE	;0x7C
 	OVERRUN_FLAG
+	;temp storage
+	TEMP_BSR	;0x7E
+	TEMP_W
 ;	TEST_COUNTER_HI
 ;	TEST_COUNTER_LO
  ENDC
@@ -382,7 +406,7 @@ InterruptEnter:
 	goto	InterruptExit
 	bcf	PIR4, TMR2IF			; Clear TMR2 interrupt flag
 
-	movlb	D'0'				; Bank 0
+	movlb	D'0'				; Bank 0 ;D'1' ; Bank 2 ; 
 ;	;Test ONLY Z209 code  (16 bit counter to toggle Sustain LED of ADSR 0)	
 ;	incfsz	TEST_COUNTER_LO, f
 ;	goto	EndTest
@@ -435,7 +459,14 @@ ILContinue:	;process EG0 or EG1
 	xorwf	DEBOUNCE_HI, f		; HI+ = HI XOR LO
 	comf	DEBOUNCE_LO, f		; LO+ = ~LO
 	; See if any changes occured
+	movf	BSR,w			; this bank "preservation" while accessing PORTC works, it is expensive
+	movwf	TEMP_BSR
+	movlb	D'0' ; Bank 0
 	movfw	PORTC				; Get current data from GATE & TRIG inputs
+	movwf	TEMP_W
+	movf	TEMP_BSR,w
+	movwf	BSR
+	movfw	TEMP_W
 	xorwf	STATES, w			; Find the changes
 	; Reset counters where no change occured
 	andwf	DEBOUNCE_LO, f
@@ -468,7 +499,11 @@ TestTrigger:
 ;	btfss	TRIGGER
 	btfsc	TRIGGER
 	goto	TestGate			; No, so skip
+	movf	BSR,w			; this bank "preservation" works
+	movlb	D'0' ; Bank 0
 	bsf	GATE_LED0
+	movwf	BSR
+
 	
 StartEnvelope:
 ; If TRIGGER has gone high, change to ATTACK stage
@@ -496,7 +531,10 @@ TestGate:
 ;	btfsc	GATE
 	btfss	GATE
 	goto	GenerateEnvelope	; No, so skip
-	bcf	GATE_LED0	
+	movf	BSR,w			; this bank "preservation" works
+	movlb	D'0' ; Bank 0
+	bcf	GATE_LED0
+	movwf	BSR	
 EndEnvelope:
 ; If GATE has gone low, change to RELEASE stage
 	; Zero the accumulator
@@ -1163,7 +1201,7 @@ CFMContinue:
 	    goto    CopyMemoryBlock
 
 CopyMemoryBlock:	    
-	    movlw   d'24'	    ; # of bytes to move
+	    movlw   d'28'	    ; # of bytes to move
 	    movwf   LOOP_COUNTER
 CopyLoop:
 	    moviw   INDF0++
@@ -1266,6 +1304,10 @@ Main:
 	clrf	DECAY_CV
 	clrf	SUSTAIN_CV
 	clrf	RELEASE_CV
+;	clrf	ATTACK1_CV			; Default to minimum time of 1mS
+;	clrf	DECAY1_CV
+;	clrf	SUSTAIN1_CV
+;	clrf	RELEASE1_CV
 	clrf	TIME_CV				; Default to no time modulation
 	clrf	MODE_CV				; Default to standard ADSR, no looping
 	clrf	STAGE
@@ -1293,8 +1335,8 @@ Main:
 	; Clear the output buffers
 	clrf	OUTPUT_HI
 	clrf	OUTPUT_LO
-	; Set upo the ADC channel scan
-	movlw	D'7'
+	; Set up the ADC channel scan (to roll over)
+	movlw	0x07
 	movwf	ADC_CHANNEL			; Start with ATTACK_CV
 	; The first Attack starts at zero
 	clrf	START_HI
@@ -1325,12 +1367,16 @@ MainLoop:
 ; We need to do different things depending on which value we're reading:
 SelectADCChannel:
 	movf	ADC_CHANNEL, w		; Get current channel
-	andlw	D'7'			; Only want 3 LSBs
+	andlw	0x07			; Only want 3 LSBs
 	brw				; Computed branch
 	goto	AttackCV
 	goto	DecayCV
 	goto	SustainCV
 	goto	ReleaseCV
+	goto	Attack1CV
+	goto	Decay1CV
+	goto	Sustain1CV
+;	goto	Release1CV
 	; don't process these channels, leave them hardcoded
 ;	goto	TimeCV
 ;	goto	ModeCV
@@ -1366,7 +1412,37 @@ AttackCV:
 	movwf	ATTACK_INC_LO
 	goto	MainLoop
 
+Attack1CV:
+        movfw	BSR		;preserve BSR
+	movwf	TEMP_BSR
+	movlw	D'4'		; ANA4
+	call	DoADConversion
+	
+	movlb	D'1'		; Bank 2
+	movwf	ATTACK_CV
+	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
+	movfw	TIME_CV
+	subwf	ATTACK_CV, w
+	btfss	BORROW
+	movlw	D'0'				; If value is <0, use minimum
+	; Get the new phase increment for the ATTACK stage
+	movwf	FSR0L				; Store index
+	movlw	HIGH ControlLookupHi; Get table page
+	movwf	FSR0H
+	movf	INDF0, w			; Get high byte
+	movwf	ATTACK_INC_HI		; Store it
+	incf	FSR0H, f			; Move to mid table
+	movf	INDF0, w			; etc..
+	movwf	ATTACK_INC_MID
+	incf	FSR0H, f			; Move to lo table
+	movf	INDF0, w
+	movwf	ATTACK_INC_LO
+	movf	TEMP_BSR,w		; restore BSR
+	movwf	BSR
+	goto	MainLoop
 
+	
+Decay1CV:	; TODO: replicate DecayCV
 ; Update the Decay CV
 DecayCV:
 	movlw	D'1'		; ANA1
@@ -1399,7 +1475,15 @@ SustainCV:
 	movwf	SUSTAIN_CV			; Simply store this one- easy!
 	goto	MainLoop
 
-
+; Update the Sustain CV
+Sustain1CV:
+	movlw	D'6'		; ANA6
+	call	DoADConversion
+	movlb	D'1'		; change to bank 2
+	movwf	SUSTAIN_CV	; Simply store this one- easy!
+	movlb	D'0'		; change back to bank 0
+	goto	MainLoop
+	
 ; Update the Release CV
 ReleaseCV:
 ;	movlw	b'00010101'			; AN5, ADC On
