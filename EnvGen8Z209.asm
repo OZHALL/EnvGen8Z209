@@ -43,6 +43,10 @@
 ;		  I have the second Sustain controlling EG0 correctly
 ;2018-05-23 ozh - this is starting to work.  I have an envelope output on DAC1 (vs DAC0).  attack/decay are coming from EG0 :(
 ;2018-05-23 ozh - it believe the separate gate logic is working now
+;		  BTW, there was a problem with BSR getting changed somehow.   The problem is that TEMP_BSR was used by 
+;		  both the main and interrupt code (stupid!).  I created TEMP_BSR_INTR for use in the interrupt code. - problem solved
+;2018-05-23 ozh	- looks like I have a fully functional EG1, but I have not tried servicing both in one interrupt
+;		  I'm almost there with both, but not quite.  
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -239,57 +243,9 @@
 	TIME_CV						; TIME is used directly
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
 	
-
-
   ENDC
- 
-; ;bank 0 - just give these another name for EG0
-;  CBLOCK 0x020
-;	;Z209 - save a copy for each EG
-;	; begin model for EG 0
-;	; The current stage 
-;	M0_STAGE	; 0=Wait, 1=Attack, 2=Punch, 3=Decay, 4=Sustain, 5=Release, 0=Wait
-;	; The debounce counters for GATE and TRIGGER
-;	M0_DEBOUNCE_HI
-;	M0_DEBOUNCE_LO
-;	M0_STATES						; The output state from the debounce
-;	M0_CHANGES						; The bits that have altered
-;	; The 24 bit phase accumulator
-;	M0_PHASE_HI
-;	M0_PHASE_MID
-;	M0_PHASE_LO
-;	; The 20 bit frequency increments
-;	; These are stored separately for Attack, Decay, & Release
-;	; Note that these increments have been adjusted to reflect
-;	; changes due to TIME_CV, whereas the raw CVs haven't
-;	M0_ATTACK_INC_LO
-;	M0_ATTACK_INC_MID
-;	M0_ATTACK_INC_HI
-;	M0_PUNCH_INC_LO				; Punch stage is not variable
-;	M0_PUNCH_INC_MID
-;	M0_PUNCH_INC_HI
-;	M0_DECAY_INC_LO
-;	M0_DECAY_INC_MID
-;	M0_DECAY_INC_HI
-;	M0_RELEASE_INC_LO
-;	M0_RELEASE_INC_MID
-;	M0_RELEASE_INC_HI
-;;	; The current output level when an Attack or Release starts
-;	M0_START_HI	
-;	M0_START_LO
-;	; The 12 bit output level
-;	M0_OUTPUT_HI	
-;	M0_OUTPUT_LO
-;
-;	; The current control voltage(CV) values (8 bit)
-;	M0_ATTACK_CV					; These first four aren't actually used any more
-;	M0_DECAY_CV					; Instead we find a PHASE INC value and use that
-;	M0_SUSTAIN_CV
-;	M0_RELEASE_CV
-;	; end EG 0
-; ENDC
-; 
- ;bank 2
+  
+  ;bank 2
   CBLOCK 0x120	
 	; begin model for EG 1
 	; The current stage 
@@ -367,6 +323,7 @@
 	TEMP_BSR	;0x7E
 	TEMP_BSR_INTR	;for use in Interrupt ONLY
 	TEMP_W_INTR
+	FAKE_PUNCH_EXPO
 ;	TEST_COUNTER_HI
 ;	TEST_COUNTER_LO
  ENDC
@@ -381,8 +338,10 @@
 #define BORROW		STATUS,C	; Borrow is the same as Carry
 
 ; Options selection definitions
-#define USE_ADSR	PORTA, 5	; Add Punch stage? (0=APSDR, 1=Standard ADSR)
-#define USE_EXPO	PORTA, 3	; Linear or exponential envelope?	(1=Expo)
+;#define USE_ADSR	PORTA, 5	; Add Punch stage? (0=APSDR, 1=Standard ADSR)
+;#define USE_EXPO	PORTA, 3	; Linear or exponential envelope?	(1=Expo)
+#define USE_ADSR	FAKE_PUNCH_EXPO, 5	; Add Punch stage? (0=APSDR, 1=Standard ADSR)
+#define USE_EXPO	FAKE_PUNCH_EXPO, 3	; Linear or exponential envelope?	(1=Expo)
  
 ; Flag bit definitions
 #define LFO_MODE	FLAGS, 0	; LFO mode (makes env loop endslessly)
@@ -639,7 +598,10 @@ GetReleaseOffset:
 ; Increment the phase accumulator PHASE (24+20 bit addition)
 IncrementPhase:
 	movwf	FSR1L				; Store offset
-	clrf	FSR1H				; Set up for Indirect Addressing
+	movlw	D'1'				; bank 2  (128*2=256=FSR1H=1)
+	movwf	FSR1H				; Set up for Indirect Addressing
+	btfss	DAC_NUMBER,7			; if EG1 (bank 2), skip next statement
+	clrf	FSR1H				; correct to bank 0 if needed
 	; Which set of increments are we using?
 	moviw	FSR1++				; Add FREQ_INC to PHASE
 	addwf	PHASE_LO, f
@@ -662,10 +624,10 @@ NextStage:
 TestPunch:
 ; Do we use the Punch stage?
 ;	Z209 - hard code Punch usage
-;	comment out the next line to hardecode punch
-	btfss	USE_ADSR		; Standard ADSR, so skip Punch
-	goto	TestLooping
-
+;	comment out the next line to hardcode punch (i.e. goto TestLooping)
+;	or the next TWO lines so skip punch
+;	btfss	USE_ADSR		; Standard ADSR, so skip Punch
+;	goto	TestLooping
 SkipPunch:
 	; Are we on the Punch stage?
 	movf	STAGE, w		; We're about to examine what STAGE we're on
@@ -1389,6 +1351,12 @@ Main:
 	movwf	PUNCH_INC_MID
 	movlw	D'1'
 	movwf	PUNCH_INC_HI
+	
+	; set up punch & expo as hardcoded values.  See defines USE_ADSR and USE_EXPO
+;	movlw	0x28			; punch 1, expo 1 = 0010 1000 = 0x28
+	movlw	0x08			; punch 0, expo 1 = 0000 1000 = 0x08
+	movwf	FAKE_PUNCH_EXPO		;use this variable instead of PORTA bits 3 (expo) & 5 (punch)
+	
 	; Clear the output buffers
 	clrf	OUTPUT_HI
 	clrf	OUTPUT_LO
@@ -1474,8 +1442,10 @@ Attack1CV:
 	movlw	D'4'		; ANA4
 	call	DoADConversion
 
+	movwf	TEMP		;save WREG in the TEMP variable
 	movfw	BSR		;preserve BSR
 	movwf	TEMP_BSR
+	movfw	TEMP		;restore WREG
 	movlb	D'2'		; Bank 2
 	movwf	ATTACK_CV
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
@@ -1528,8 +1498,10 @@ Decay1CV:
 	movlw	D'5'		; ANA5
 	call	DoADConversion
 
+	movwf	TEMP		;save WREG in the TEMP variable
 	movfw	BSR		;preserve BSR
 	movwf	TEMP_BSR
+	movfw	TEMP		;restore WREG
 	movlb	D'2'		; Bank 2
 	movwf	DECAY_CV
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
@@ -1599,8 +1571,10 @@ Release1CV:
 	movlw	D'7'		; ANA7
 	call	DoADConversion
 
+	movwf	TEMP		;save WREG in the TEMP variable
 	movfw	BSR		;preserve BSR
 	movwf	TEMP_BSR
+	movfw	TEMP		;restore WREG
 	movlb	D'2'		; Bank 2
 	movwf	RELEASE_CV
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
