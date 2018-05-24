@@ -918,12 +918,12 @@ InterruptExit:
 	btfsc	DAC_NUMBER,7		; if bit 7 is set, we finished DAC1
 	goto	FinishedEG1
 ;	now process DAC1
-;	movlw	DAC1
-;	goto	IntLoop
+	movlw	DAC1
+	goto	IntLoop
 FinishedEG1:
 ;   force an overrun
 ;	movlb	D'0'				; Bank 0
-	call Delay25us
+;	call Delay25us
 	; second toggle for the CheckOverrun
 	movlw	BIT0
 	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
@@ -1289,7 +1289,8 @@ Main:
 	movlb	D'5'				; Bank 5		
 	movlw	B'00000001'			
 	movwf	T2CLKCON			; Fosc/4 = 8MHz clock for timer
-	movlw	B'00110000'			; Prescale /8 = 1MHz, Postscale /1, Tmr Off
+;	movlw	B'00110000'			; Prescale /8 = 1MHz, Postscale /1, Tmr Off
+	movlw	B'01000000'			; Prescale /16 = 0.5MHz, Postscale /1, Tmr Off
 	movwf	T2CON					
 	movlw	0x1F				; Set up Timer2 period register (/32)
 	; T2PR = 28Dh same as PR2
