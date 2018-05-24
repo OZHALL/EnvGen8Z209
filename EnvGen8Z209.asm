@@ -42,6 +42,7 @@
 ;2018-05-22 ozh - hardcoded bank 1 (for EG1) and it works, if you preserve BSR before accessing PORTC and LATB
 ;		  I have the second Sustain controlling EG0 correctly
 ;2018-05-23 ozh - this is starting to work.  I have an envelope output on DAC1 (vs DAC0).  attack/decay are coming from EG0 :(
+;2018-05-23 ozh - it believe the separate gate logic is working now
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -212,7 +213,7 @@
 	; The 12 bit output level
 	OUTPUT_HI	
 	OUTPUT_LO
-	
+
 	; The current control voltage(CV) values (8 bit)
 	ATTACK_CV					; These first four aren't actually used any more
 	DECAY_CV					; Instead we find a PHASE INC value and use that
@@ -235,7 +236,6 @@
 	MULT_OUT_HI
 	MULT_OUT_LO
 
-
 	TIME_CV						; TIME is used directly
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
 	
@@ -243,52 +243,52 @@
 
   ENDC
  
- ;bank 0 - just give these another name for EG0
-  CBLOCK 0x020
-	;Z209 - save a copy for each EG
-	; begin model for EG 0
-	; The current stage 
-	M0_STAGE	; 0=Wait, 1=Attack, 2=Punch, 3=Decay, 4=Sustain, 5=Release, 0=Wait
-	; The debounce counters for GATE and TRIGGER
-	M0_DEBOUNCE_HI
-	M0_DEBOUNCE_LO
-	M0_STATES						; The output state from the debounce
-	M0_CHANGES						; The bits that have altered
-	; The 24 bit phase accumulator
-	M0_PHASE_HI
-	M0_PHASE_MID
-	M0_PHASE_LO
-	; The 20 bit frequency increments
-	; These are stored separately for Attack, Decay, & Release
-	; Note that these increments have been adjusted to reflect
-	; changes due to TIME_CV, whereas the raw CVs haven't
-	M0_ATTACK_INC_LO
-	M0_ATTACK_INC_MID
-	M0_ATTACK_INC_HI
-	M0_PUNCH_INC_LO				; Punch stage is not variable
-	M0_PUNCH_INC_MID
-	M0_PUNCH_INC_HI
-	M0_DECAY_INC_LO
-	M0_DECAY_INC_MID
-	M0_DECAY_INC_HI
-	M0_RELEASE_INC_LO
-	M0_RELEASE_INC_MID
-	M0_RELEASE_INC_HI
-;	; The current output level when an Attack or Release starts
-	M0_START_HI	
-	M0_START_LO
-	; The 12 bit output level
-	M0_OUTPUT_HI	
-	M0_OUTPUT_LO
-
-	; The current control voltage(CV) values (8 bit)
-	M0_ATTACK_CV					; These first four aren't actually used any more
-	M0_DECAY_CV					; Instead we find a PHASE INC value and use that
-	M0_SUSTAIN_CV
-	M0_RELEASE_CV
-	; end EG 0
- ENDC
- 
+; ;bank 0 - just give these another name for EG0
+;  CBLOCK 0x020
+;	;Z209 - save a copy for each EG
+;	; begin model for EG 0
+;	; The current stage 
+;	M0_STAGE	; 0=Wait, 1=Attack, 2=Punch, 3=Decay, 4=Sustain, 5=Release, 0=Wait
+;	; The debounce counters for GATE and TRIGGER
+;	M0_DEBOUNCE_HI
+;	M0_DEBOUNCE_LO
+;	M0_STATES						; The output state from the debounce
+;	M0_CHANGES						; The bits that have altered
+;	; The 24 bit phase accumulator
+;	M0_PHASE_HI
+;	M0_PHASE_MID
+;	M0_PHASE_LO
+;	; The 20 bit frequency increments
+;	; These are stored separately for Attack, Decay, & Release
+;	; Note that these increments have been adjusted to reflect
+;	; changes due to TIME_CV, whereas the raw CVs haven't
+;	M0_ATTACK_INC_LO
+;	M0_ATTACK_INC_MID
+;	M0_ATTACK_INC_HI
+;	M0_PUNCH_INC_LO				; Punch stage is not variable
+;	M0_PUNCH_INC_MID
+;	M0_PUNCH_INC_HI
+;	M0_DECAY_INC_LO
+;	M0_DECAY_INC_MID
+;	M0_DECAY_INC_HI
+;	M0_RELEASE_INC_LO
+;	M0_RELEASE_INC_MID
+;	M0_RELEASE_INC_HI
+;;	; The current output level when an Attack or Release starts
+;	M0_START_HI	
+;	M0_START_LO
+;	; The 12 bit output level
+;	M0_OUTPUT_HI	
+;	M0_OUTPUT_LO
+;
+;	; The current control voltage(CV) values (8 bit)
+;	M0_ATTACK_CV					; These first four aren't actually used any more
+;	M0_DECAY_CV					; Instead we find a PHASE INC value and use that
+;	M0_SUSTAIN_CV
+;	M0_RELEASE_CV
+;	; end EG 0
+; ENDC
+; 
  ;bank 2
   CBLOCK 0x120	
 	; begin model for EG 1
@@ -331,6 +331,20 @@
 	M1_DECAY_CV					; Instead we find a PHASE INC value and use that
 	M1_SUSTAIN_CV
 	M1_RELEASE_CV
+	
+	; The working storage for the interpolation subroutine
+	M1_INPUT_X_HI					; Two inputs, X and Y
+	M1_INPUT_X_LO
+	M1_INPUT_Y_HI
+	M1_INPUT_Y_LO
+	M1_CURVE_OUT_HI				; The final, interpolated, curve output
+	M1_CURVE_OUT_LO
+	; Working storage for the 10x10-bit multiply subroutine
+	M1_MULT_IN_HI
+	M1_MULT_IN_LO					; CURVE_OUT is the other input
+	M1_MULT_OUT_HI
+	M1_MULT_OUT_LO
+
 	; end EG 1
  ENDC
 
@@ -351,7 +365,8 @@
 	OVERRUN_FLAG
 	;temp storage
 	TEMP_BSR	;0x7E
-	TEMP_W
+	TEMP_BSR_INTR	;for use in Interrupt ONLY
+	TEMP_W_INTR
 ;	TEST_COUNTER_HI
 ;	TEST_COUNTER_LO
  ENDC
@@ -375,9 +390,13 @@
 
 ; Input definitions
 #define TRIG_CHANGED	CHANGES, 0	; RC0 = TRIGGER input
-#define TRIGGER			STATES, 0
+#define TRIGGER		STATES, 0
 #define GATE_CHANGED	CHANGES, 0	; RC0 = GATE input
-#define GATE			STATES, 0
+#define GATE		STATES, 0
+#define TRIG1_CHANGED	CHANGES, 1	; RC1 = TRIGGER 1 input
+#define TRIGGER1	STATES, 1
+#define GATE1_CHANGED	CHANGES, 1	; RC1 = GATE 1 input
+#define GATE1		STATES, 1
 ; Note I use the debounced variables, not the input directly
 ;Z209 defines
 ;If you're doing a read-modify-write (for example a BSF), you generally want to use the LATCH.
@@ -404,10 +423,10 @@ InterruptEnter:
 ; Sample rate timebase at 31.25KHz
 	movlb	D'14'				; Bank 14
 	btfss	PIR4, TMR2IF			; Check if TMR2 interrupt
-	goto	InterruptExit
+	goto	FinishedEG1 ;InterruptExit
 	bcf	PIR4, TMR2IF			; Clear TMR2 interrupt flag
 
-	movlb	D'2' ; Bank 2 ; D'0'				; Bank 0 ;
+	movlb	D'0'				; Bank 0 ;D'2' ; Bank 2 ;
 ;	;Test ONLY Z209 code  (16 bit counter to toggle Sustain LED of ADSR 0)	
 ;	incfsz	TEST_COUNTER_LO, f
 ;	goto	EndTest
@@ -431,7 +450,7 @@ CheckOverrun:
 	movlw	BIT0
 	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
 ;default - DAC0
-	movlw	DAC1;DAC0		;start with DAC0
+	movlw	DAC0		;start with DAC0 ;DAC1;
 	bcf	DAC_NUMBER,7    ; clear bit 7 of DAC_NUMBER 
 IntLoop:
 	btfss	WREG,7		; check DAC0 or DAC1
@@ -461,13 +480,13 @@ ILContinue:	;process EG0 or EG1
 	comf	DEBOUNCE_LO, f		; LO+ = ~LO
 	; See if any changes occured
 	movf	BSR,w			; this bank "preservation" while accessing PORTC works, it is expensive
-	movwf	TEMP_BSR
+	movwf	TEMP_BSR_INTR
 	movlb	D'0' ; Bank 0
 	movfw	PORTC				; Get current data from GATE & TRIG inputs
-	movwf	TEMP_W
-	movf	TEMP_BSR,w
+	movwf	TEMP_W_INTR
+	movf	TEMP_BSR_INTR,w
 	movwf	BSR
-	movfw	TEMP_W
+	movfw	TEMP_W_INTR
 	xorwf	STATES, w			; Find the changes
 	; Reset counters where no change occured
 	andwf	DEBOUNCE_LO, f
@@ -491,10 +510,12 @@ ILContinue:	;process EG0 or EG1
 ; starts an attack. If the Gate goes low, it starts a release.
 	
 TestTrigger:
+	btfsc	BSR,1		    ; see if we are in bank 2 (0x02 = b'00000010')
+	goto	TestTrigger1	    ; if so, service trigger 1
 	; Has TRIGGER changed?
 	btfss	TRIG_CHANGED
 	goto	TestGate
-	
+
 	; TRIGGER has changed, but has it gone high?
 ; Z209 - we need to reverse this cuz my hardware inverts the gate input
 ;	btfss	TRIGGER
@@ -504,7 +525,21 @@ TestTrigger:
 	movlb	D'0' ; Bank 0
 	bsf	GATE_LED0
 	movwf	BSR
+	goto	StartEnvelope
+	
+TestTrigger1:
+	btfss	TRIG1_CHANGED
+	goto	TestGate
 
+	; TRIGGER has changed, but has it gone high?
+; Z209 - we need to reverse this cuz my hardware inverts the gate input
+;	btfss	TRIGGER
+	btfsc	TRIGGER1
+	goto	TestGate		; No, so skip
+	movf	BSR,w			; this bank "preservation" works
+	movlb	D'0' ; Bank 0
+	bsf	GATE_LED1
+	movwf	BSR
 	
 StartEnvelope:
 ; If TRIGGER has gone high, change to ATTACK stage
@@ -523,6 +558,9 @@ StartEnvelope:
 	goto	GenerateEnvelope	
 
 TestGate:
+	btfsc	BSR,1		    ; see if we are in bank 2 (0x02 = b'00000010')
+	goto	TestGate1	    ; if so, service gate 1
+	
 	; Has GATE changed?
 	btfss	GATE_CHANGED
 	goto	GenerateEnvelope
@@ -535,7 +573,23 @@ TestGate:
 	movf	BSR,w			; this bank "preservation" works
 	movlb	D'0' ; Bank 0
 	bcf	GATE_LED0
-	movwf	BSR	
+	movwf	BSR
+	goto	EndEnvelope
+TestGate1:
+	; Has GATE changed?
+	btfss	GATE1_CHANGED
+	goto	GenerateEnvelope
+	
+	; GATE has changed, but has it gone low?
+; Z209 - we need to reverse this cuz my hardware inverts the gate input
+;	btfsc	GATE
+	btfss	GATE1
+	goto	GenerateEnvelope	; No, so skip
+	movf	BSR,w			; this bank "preservation" works
+	movlb	D'0' ; Bank 0
+	bcf	GATE_LED1
+	movwf	BSR
+	
 EndEnvelope:
 ; If GATE has gone low, change to RELEASE stage
 	; Zero the accumulator
@@ -840,7 +894,7 @@ DACOutput:
 	movwf	WORK_HI
 	movf	OUTPUT_LO,w
 	movwf	WORK_LO
-	clrc		    ; clear carry flag = 0 
+	;clrc	don't need it	    ; clear carry flag = 0 
 	lsrf	WORK_HI, f  ; move lsb into carry
 	rrf	WORK_LO, f  ; move cary into msb and lsb into carry	
 	lsrf	WORK_HI, f  ; move lsb into carry
@@ -908,6 +962,8 @@ FinishedEG1:
 	; second toggle for the CheckOverrun
 	movlw	BIT0
 	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
+;	should not need this
+;	movlb	D'0'				; Bank 0
 	retfie
 
 ;------------------------------------------------------
