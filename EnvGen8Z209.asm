@@ -47,6 +47,8 @@
 ;		  both the main and interrupt code (stupid!).  I created TEMP_BSR_INTR for use in the interrupt code. - problem solved
 ;2018-05-23 ozh	- looks like I have a fully functional EG1, but I have not tried servicing both in one interrupt
 ;		  I'm almost there with both, but not quite.  
+;2018-05-24 ozh - I divided the TMR2 interrupt frequency by 2 (prescale /8 chgd to /16).  This allowed time to process 
+;		  both envelopes!!! I'm basically there now.   Time to clean up!
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
