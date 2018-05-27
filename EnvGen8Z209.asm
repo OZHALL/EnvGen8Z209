@@ -52,6 +52,8 @@
 ;2018-05-27 ozh - add logic to skip DAC output if the values are the same as previous.  It helped a lot with clean output
 ;		    Also, we still have an 0.5 v positive bias on the output.
 ;		    Finally, we need to clean up the vref, which is a little dirty.
+;2018-05-27 ozh - decreased the PeriodRegister (PR2) for TMR2 so that the interrupt rate is about 23KHz
+;		    this works for two envelopes.   It results in a 2ms attack time.
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -1323,7 +1325,8 @@ Main:
 ;	movlw	B'00110000'			; Prescale /8 = 1MHz, Postscale /1, Tmr Off
 	movlw	B'01000000'			; Prescale /16 = 0.5MHz, Postscale /1, Tmr Off
 	movwf	T2CON					
-	movlw	0x1F				; Set up Timer2 period register (/32)
+;	movlw	0x1F				; Set up Timer2 period register (/32) (0.5/32 = 15625KHz
+	movlw	0x15				; Set up Timer2 period register (43 us = c.23250 KHz)  WORKS!  (0x14 does NOT).
 	; T2PR = 28Dh same as PR2
 	movwf	PR2				; Interrupts at 1MHz/32 = 31.25KHz
 
