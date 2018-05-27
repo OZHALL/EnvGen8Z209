@@ -49,6 +49,9 @@
 ;		  I'm almost there with both, but not quite.  
 ;2018-05-24 ozh - I divided the TMR2 interrupt frequency by 2 (prescale /8 chgd to /16).  This allowed time to process 
 ;		  both envelopes!!! I'm basically there now.   Time to clean up!
+;2018-05-27 ozh - add logic to skip DAC output if the values are the same as previous.  It helped a lot with clean output
+;		    Also, we still have an 0.5 v positive bias on the output.
+;		    Finally, we need to clean up the vref, which is a little dirty.
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -242,6 +245,8 @@
 	MULT_OUT_HI
 	MULT_OUT_LO
 
+	PREV_WORK_HI
+	PREV_WORK_LO
 	TIME_CV						; TIME is used directly
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
 	
@@ -302,7 +307,9 @@
 	M1_MULT_IN_LO					; CURVE_OUT is the other input
 	M1_MULT_OUT_HI
 	M1_MULT_OUT_LO
-
+	
+	M1_PREV_WORK_HI
+	M1_PREV_WORK_LO
 	; end EG 1
  ENDC
 
@@ -853,11 +860,33 @@ ReleaseScaling:
 DACOutput:
 ;	output to MCP4922, not the internal DAC	
 
-	; take 16 bits down to 12 bits
+	; prepare to take 16 bits down to 12 bits
 	movf	OUTPUT_HI,w
 	movwf	WORK_HI
+	
+	; see if the values WREG and Previous HI values are the same
+	clrf	TEMP_W_INTR
+	xorwf	PREV_WORK_HI,0	   ; compare the two if same, XOR results in 0
+	movwf	TEMP_W_INTR
+	
+	; now process LO
 	movf	OUTPUT_LO,w
 	movwf	WORK_LO
+	
+	; see if the values WREG and Previous LO values are the same
+	xorwf	PREV_WORK_LO	   ; compare the two if same, XOR results in 0
+	; now include the results of the HI test
+	iorwf	TEMP_W_INTR,0	    ; ,0 = results into W     
+	; bail out if current & previous values are the same for both HI and LO
+	btfsc    STATUS,Z
+	goto     InterruptExit
+	
+	; update previous values
+	movf	WORK_HI,w
+	movwf	PREV_WORK_HI
+	movf	WORK_LO,w
+	movwf	PREV_WORK_LO
+
 	;clrc	don't need it	    ; clear carry flag = 0 
 	lsrf	WORK_HI, f  ; move lsb into carry
 	rrf	WORK_LO, f  ; move cary into msb and lsb into carry	
