@@ -852,23 +852,6 @@ ReleaseScaling:
 ;---------------------------------------
 DACOutput:
 ;	output to MCP4922, not the internal DAC	
-    
-; be sure we've finished the last send before we start another one
-	movf	BSR,w			; this bank "preservation" while accessing PORTC works, it is expensive
-	movwf	TEMP_BSR_INTR
-
-	movlb D'3'
-WriteByteLoWaitA:
-	btfss	SSP2STAT, BF		; Wait while it sends
-	goto	WriteByteLoWaitA	
-	
-	; end of write
-	movlb D'0'		; PORTB
-	bsf   NOT_CS	; Take ~CS high
-	nop
-	; restore bank
-	movf	TEMP_BSR_INTR,w
-	movwf	BSR
 
 	; take 16 bits down to 12 bits
 	movf	OUTPUT_HI,w
@@ -884,31 +867,11 @@ WriteByteLoWaitA:
 	rrf	WORK_LO, f  ; move cary into msb and lsb int
 	lsrf	WORK_HI, f  ; move lsb into carry
 	rrf	WORK_LO, f  ; move cary into msb and lsb int
-	
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
+
+;	movlw DAC0	; TODO: change this hardcoded DAC0 to a variable
+;        ; pass in the DAC # (in bit 7) via 
+;	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
+;        movwf DAC_NUMBER   
 	
 	; output the WORK_HI and WORK_LO to the DAC# (0 or 1) specified in W
 	movlb D'0'		; PORTB
@@ -941,21 +904,15 @@ WriteByteHiWait:
 	; second send the low byte
 	movf WORK_LO,w
 	movwf SSP2BUF	; load the buffer
-; rather than just wait, continue to do other code while SSP module outputs
-; set it high in two places - beginning of DACOutput and at the end of the interrupt
-; in reality, this only saves time for the first send, 
-;   but it should save at least 10% of the total interrupt time
-;WriteByteLoWait:
-;	btfss	SSP2STAT, BF		; Wait while it sends
-;	goto	WriteByteLoWait	
-;	
-;	; end of write
-;	movlb D'0'		; PORTB
-;	bsf   NOT_CS	; Take ~CS high
-;
-	nop
+WriteByteLoWait:
+	btfss	SSP2STAT, BF		; Wait while it sends
+	goto	WriteByteLoWait	
+	
+	; end of write
 	movlb D'0'		; PORTB
-;	;Note that bank has been reset at this point
+	bsf   NOT_CS	; Take ~CS high
+
+	;Note that bank has been reset at this point
 ;----------------------------------------
 InterruptExit:
 ;	we don't care what bank we're in at this point
@@ -972,17 +929,8 @@ FinishedEG1:
 	; second toggle for the CheckOverrun
 	movlw	BIT0
 	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
-	
-; be sure we've finished the last send before we start exit
-	movlb D'3'
-WriteByteLoWaitB:
-	btfss	SSP2STAT, BF		; Wait while it sends
-	goto	WriteByteLoWaitB	
-	
-	; end of write
-	movlb D'0'		; PORTB
-	bsf   NOT_CS	; Take ~CS high
-	nop
+;	should not need this
+;	movlb	D'0'				; Bank 0
 	retfie
 
 ;------------------------------------------------------
