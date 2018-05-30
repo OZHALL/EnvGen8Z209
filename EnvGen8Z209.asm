@@ -58,13 +58,7 @@
 ;2018-05-27 ozh - Tom Wiltshire gave me updated lookup tables.  They match the 22kHz ( PR2 = 0x16) refresh (sample) rate.
 ;		    attack time is now sub-millisecond!!!
 ;2018-05-29 ozh - begin porting I2C support from the existing (working) C code
-; * I2C slave messages:
-; Pointer Byte:
-;D7:D4 ? Mode Bits                D3:D0 - Address Comments
-;0 0 0 0 ? Configuration Mode                     Unused at the moment
-;0 0 0 1 ? Write LED mode                         Always use Address 0 with 2 data bytes
-;0 0 1 0 ? Read  ADC (fader) mode 0000 to 0111    Only 0-7 address for this module
-;0 0 1 1 ? Write ADC (fader) mode 0000 to 0111    Only 0-7 address for this module 8 data bytes
+;		    see I2C1StatusCallback for I2C slave messages documentation
 ;
 	
 ;"Never do single bit output operations on PORTx, use LATx 
@@ -263,9 +257,16 @@
 	PREV_WORK_LO
 	TIME_CV						; TIME is used directly
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
-	
+
   ENDC
-  
+  CBLOCK 0x060
+	;BYTE_FADER_VALUE[8]  
+	BYTE_FADER_VALUE			; 8 bytes for the 8 faders
+  ENDC
+  CBLOCK 0x068
+	;PREV_BYTE_FADER_VALUE[8]
+	PREV_BYTE_FADER_VALUE			; 8 bytes for the 8 faders
+  ENDC
   ;bank 2
   CBLOCK 0x120	
 	; begin model for EG 1
@@ -988,6 +989,7 @@ FinishedEG1:
 	cblock 0x1A0
 ;    uint8_t     i2c_data                = 0x55;
 	i2c_data
+	I2C1_slaveWriteData
 	endc
 	
 ;typedef enum
@@ -1002,22 +1004,31 @@ FinishedEG1:
 #define	I2C1_SLAVE_READ_REQUEST 1
 #define	I2C1_SLAVE_WRITE_COMPLETED 2
 #define I2C1_SLAVE_READ_COMPLETED 3
-
+	
+;typedef enum
+;{
+;    SLAVE_NORMAL_DATA,
+;    SLAVE_DATA_ADDRESS,
+;} SLAVE_WRITE_DATA_TYPE;
+#define SLAVE_NORMAL_DATA 0
+#define SLAVE_DATA_ADDRESS 1
+	
 I2C1Isr:
-	movlb	D'14'
 ;void I2C1Isr ( void )
 ;{
-;    uint8_t     i2c_data                = 0x55;
+;    uint8_t     i2c_data                = 0x55; ;note: we don't use this default value
 ;
 ;
 ;    // NOTE: The slave driver will always acknowledge
 ;    //       any address match.
 ;
+	movlb	D'14'
 ;    PIR3bits.SSP1IF = 0;        // clear the slave interrupt flag
 	bcf	PIR3,0		; bit 0
 	movlb	D'3'
 ;    i2c_data        = SSP1BUF;  // read SSPBUF to clear BF
 	movfw	SSP1BUF
+	movwf	i2c_data
 
 ;    if(1 == SSP1STATbits.R_nW)
 	btfss	SSP1STAT,2	    ;bit 2 = R_nW
@@ -1034,7 +1045,6 @@ SSP1STATSlaveReadComplete:
 ;            // callback routine can perform any post-read processing
 ;            I2C1_StatusCallback(I2C1_SLAVE_READ_COMPLETED);
 	movlw	I2C1_SLAVE_READ_COMPLETED
-	call	I2C1StatusCallback
 	goto	I2C1IsrExit
 ;        }
 ;        else
@@ -1043,62 +1053,68 @@ SSP1STATSlaveRead:
 ;            // callback routine should write data into SSPBUF
 ;            I2C1_StatusCallback(I2C1_SLAVE_READ_REQUEST);
 	movlw	I2C1_SLAVE_READ_REQUEST
-	call	I2C1StatusCallback
 	goto	I2C1IsrExit
 ;        }
 ;    }
 ;    else if(0 == SSP1STATbits.D_nA)
+SSP1STATWrite:
 	btfsc	SSP1CON2,6	    ;bit 6 = ACKSTAT
-	goto	I2C1IsrExit
+	goto	SSP1STATWriteData
 ;    {
 ;        // this is an I2C address
 ;
 ;        // callback routine should prepare to receive data from the master
 ;        I2C1_StatusCallback(I2C1_SLAVE_WRITE_REQUEST);
 	movlw	I2C1_SLAVE_WRITE_REQUEST
-	call	I2C1StatusCallback
 	goto	I2C1IsrExit
 ;    }
 ;    else
-SSP1STATWrite:
+SSP1STATWriteData:
 ;    {
 ;        I2C1_slaveWriteData   = i2c_data;
+	movfw	i2c_data
+	movwf	I2C1_slaveWriteData
 ;
 ;        // callback routine should process I2C1_slaveWriteData from the master
 ;        I2C1_StatusCallback(I2C1_SLAVE_WRITE_COMPLETED);
 	movlw	I2C1_SLAVE_WRITE_COMPLETED
-	call	I2C1StatusCallback
 	goto	I2C1IsrExit
 ;    }
 ;
 I2C1IsrExit:
+	call	I2C1StatusCallback
 ;    SSP1CON1bits.CKP    = 1;    // release SCL
 	bsf SSP1CON1,4		;bit 4 is CKP
 ;
 ;} // end I2C1Isr()
 	return
 	
+  CBLOCK 0x1B0
+  	MSByteLED
+	LSByteLED
+	FaderTakeoverFlags
+	iLEDBytesChangedCount
+	iFaderBytesChangedCount
+	
+	i2c_bus_state		    
+;    static uint8_t eepromAddress    = 0;
+	eepromAddress
+;    static uint8_t faderNumber      = 0; // start with the first
+	faderNumber
+;    static uint8_t slaveWriteType   = SLAVE_NORMAL_DATA;
+	slaveWriteType
+;    static uint8_t inPointerByte;
+	inPointerByte
+;    static uint8_t wkPBMode;
+	wkPBMode
+;    static uint8_t wkPBAddr;
+	wkPBAddr
+  ENDC
+
 I2C1StatusCallback:
 ;	TODO: process request. WREG indicates type of request
 ;void I2C1_StatusCallback(I2C1_SLAVE_DRIVER_STATUS i2c_bus_state)
 ;{
-;
-;    static uint8_t EEPROM_Buffer[] =
-;    {
-;        0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,
-;        0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f,
-;        0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x29,0x2a,0x2b,0x2c,0x2d,0x2e,0x2f,
-;        0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x3a,0x3b,0x3c,0x3d,0x3e,0x3f,
-;        0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48,0x49,0x4a,0x4b,0x4c,0x4d,0x4e,0x4f,
-;        0x50,0x51,0x52,0x53,0x54,0x55,0x56,0x57,0x58,0x59,0x5a,0x5b,0x5c,0x5d,0x5e,0x5f,
-;        0x60,0x61,0x62,0x63,0x64,0x65,0x66,0x67,0x68,0x69,0x6a,0x6b,0x6c,0x6d,0x6e,0x6f,
-;        0x70,0x71,0x72,0x73,0x74,0x75,0x76,0x77,0x78,0x79,0x7a,0x7b,0x7c,0x7d,0x7e,0x7f,
-;    };
-;
-;    static uint8_t eepromAddress    = 0;
-;    static uint8_t faderNumber      = 0; // start with the first
-;    static uint8_t slaveWriteType   = SLAVE_NORMAL_DATA;
-; 
 ;    /* Pointer Byte reference:
 ;    D7:D4   Mode Bits            D3:D0 - Address  Comments
 ;    0 0 0 0 Configuration Mode                     Unused at the moment
@@ -1110,75 +1126,157 @@ I2C1StatusCallback:
 ;    const uint8_t cModeWriteLED = 0b00010000;
 ;    const uint8_t cModeReadADC  = 0b00100000;
 ;    const uint8_t cModeWriteADC = 0b00110000;
-;    
-;    static uint8_t inPointerByte;
-;    static uint8_t wkPBMode;
-;    static uint8_t wkPBAddr;
+#define cModeConfig B'00000000'	    ;   // unused now
+#define cModeWriteLED B'00010000' 
+#define cModeReadADC  B'00100000'   
+#define cModeWriteADC B'00110000'
+
+#define	cMaxFaderCnt D'8'
+	movlb	D'3'		    ; working in bank 3 where SSP1 is located
 ;    
 ;    switch (i2c_bus_state)
 ;    {
+	;WREG has the i2c_bus_state
+	brw
+	goto I2C1SWR	    ;I2C1_SLAVE_WRITE_REQUEST 0    
+	goto I2C1SRR	    ;I2C1_SLAVE_READ_REQUEST 1
+	goto I2C1SWC	    ;I2C1_SLAVE_WRITE_COMPLETED 2
+	goto I2C1SRC	    ;I2C1_SLAVE_READ_COMPLETED 3
 ;        case I2C1_SLAVE_WRITE_REQUEST:
+I2C1SWR:
 ;            // the master will be sending the eeprom address next
 ;            slaveWriteType  = SLAVE_DATA_ADDRESS;
+	movfw	SLAVE_DATA_ADDRESS
+	movwf	slaveWriteType
 ;            break;
+	goto I2C1SEXIT
 ;
 ;        case I2C1_SLAVE_WRITE_COMPLETED:
+I2C1SWC:
 ;            switch(slaveWriteType)
 ;            {
+;	only two cases here, so just do one branch
+	btfss slaveWriteType,0		; test bit 0 - Normal=0, Address=1
+	goto I2C1SWC_Normal
 ;                case SLAVE_DATA_ADDRESS:    //or pointer byte in our case
 ;                {
-;                    //eepromAddress   = I2C1_slaveWriteData;
-;                    
+I2C1SWC_Addr:                  
 ;                    // this is a pointer byte with info on what to do next                    
 ;                    inPointerByte=I2C1_slaveWriteData;
+	movfw	I2C1_slaveWriteData
+	movwf	inPointerByte
 ;                    // parse the pointer byte
-;                    wkPBMode=inPointerByte & 0xF0;// mask out the address (if any)
 ;                    wkPBAddr=inPointerByte & 0x0F;// mask out the mode (if any)
+	andlw	0x0F
+	movwf	wkPBAddr
+;                    wkPBMode=inPointerByte & 0xF0;// mask out the address (if any)
+	movfw	inPointerByte	
+	andlw	0xF0
+	movwf	wkPBMode
 ;                    // verify that this is a write LED or Fader Mode write request
 ;                    if(wkPBMode==cModeWriteLED){
+	xorlw	cModeWriteLED
+	bnz	NotModeWriteLED	
+	
 ;                        iLEDBytesChangedCount=0;
-;                    }else{ 
+	clrf	iLEDBytesChangedCount
+	goto	I2C1SWCExit
+;                    }else{
+NotModeWriteLED:
 ;                        if(wkPBMode==cModeWriteADC){
+	movfw	wkPBMode	
+	xorlw	cModeWriteADC
+	bnz	NotModeWriteADC		
 ;                            iFaderBytesChangedCount=0;
-;                            faderNumber=0;  //  assigning this does not work! (???) : wkPBAddr;  // start with this fader #              
+	clrf iFaderBytesChangedCount
+;                            faderNumber=0;  //  assigning this does not work! (???) : wkPBAddr;  // start with this fader #   
+	clrf faderNumber
+	goto	I2C1SWCExit
 ;                        }else{
+NotModeWriteADC:	
 ;                            // perhaps this makes does not sense at all because it is a subcase of "slaveWriteType" - IDK
 ;                            if(wkPBMode==cModeReadADC){
+	movfw	wkPBMode	
+	xorlw	cModeReadADC
+	bnz	I2C1SWCExit	
+	
 ;                                faderNumber=0;  //  assigning this does not work!: wkPBAddr;  // start with this fader #
+	clrf faderNumber	
 ;                            }
 ;                        }
 ;                    }
 ;                    break;
 ;                }
+	goto I2C1SWCExit
 ;
 ;
 ;                case SLAVE_NORMAL_DATA:
 ;                default:
 ;                {
-;                    // the master has written data to store in the eeprom
+I2C1SWC_Normal:
+;                    // the master has written data to store in the "model"
 ;                    // my hack ozh
-;                    if(wkPBMode==cModeWriteLED){     
+;                    if(wkPBMode==cModeWriteLED){  
+	movfw	wkPBMode	
+	xorlw	cModeWriteLED
+	bnz	SWCNNotModeWriteLED   
 ;                        if(0 == iLEDBytesChangedCount)
 ;                        {
+	movfw	iLEDBytesChangedCount
+	bnz	SWCNLEDChanged 
 ;                            MSByteLED=I2C1_slaveWriteData;
+	movfw	I2C1_slaveWriteData
+	movwf	MSByteLED
 ;                            iLEDBytesChangedCount++;
+	incf	iLEDBytesChangedCount,1	    ; 1 = results to file 
 ;                        }else{
+SWCNLEDChanged:
 ;                            LSByteLED=I2C1_slaveWriteData;
+	movfw	I2C1_slaveWriteData
+	movwf	LSByteLED	
+	
 ;                            iLEDBytesChangedCount++;
+	incf	iLEDBytesChangedCount,1	    ; 1 = results to file 
 ;                        }
 ;                    }else{
+SWCNNotModeWriteLED:
 ;                        if (wkPBMode==cModeWriteADC){
+	movfw	wkPBMode	
+	xorlw	cModeWriteADC
+	bnz	I2C1SWCExit	
 ;                            // todo: toggle pins to show activity
 ;                            if(0 == iFaderBytesChangedCount++){
+	movfw	iFaderBytesChangedCount	
+	bnz	SWCIncFaderChange	
 ;                                faderNumber=0;
+	clrf faderNumber
 ;                                //do { LATCbits.LATC5 = ~LATCbits.LATC5; } while(0);// show last one
 ;                            }
+SWCIncFaderChange:
+	incf	iFaderBytesChangedCount
 ;                            if(faderNumber<cMaxFaderCnt){ // don't write past the buffer
-;                                byteFaderValue[faderNumber]=I2C1_slaveWriteData;
-;                                prevbyteFaderValue[faderNumber]=byteFaderValue[faderNumber]; // update the prev
+	movfw	cMaxFaderCnt
+	subwfb	faderNumber,0	
+	bnc	I2C1SWCIncFader	
+;                                BYTE_FADER_VALUE[faderNumber]=I2C1_slaveWriteData;
+	clrf    FSR1H		    ; bank 0
+	movlw   #BYTE_FADER_VALUE   ; 
+	addwf	faderNumber,0	    ; get the index to the array - result in W
+	movwf	FSR1L
+	movfw	I2C1_slaveWriteData
+	movwi   0[INDF1]	    ; put the value to that location	
+;                                PREV_BYTE_FADER_VALUE[faderNumber]=BYTE_FADER_VALUE[faderNumber]; // update the prev
+	movlw   #PREV_BYTE_FADER_VALUE   ; 
+	addwf	faderNumber,0	    ; get the index to the array - result in W
+	movwf	FSR1L
+	movfw	I2C1_slaveWriteData
+	movwi   0[INDF1]	    ; put the value to that location	
 ;                                bFaderTakeoverFlag[faderNumber]=false;
+	bcf	FaderTakeoverFlags,faderNumber	    ; this will only use first 3 bits of faderNumber
 ;                            }
+I2C1SWCIncFader:
 ;                            faderNumber++;
+	incf faderNumber,1	; 1 = results to file reg
 ;                            if(cMaxFaderCnt>faderNumber){
 ;                                //IO_RC6_Toggle(); 
 ;                                //do { LATCbits.LATC6 = ~LATCbits.LATC6; } while(0);;// show last one
@@ -1186,40 +1284,43 @@ I2C1StatusCallback:
 ;                            }
 ;                        } 
 ;                    }
-;                    /*
-;                    EEPROM_Buffer[eepromAddress++]    = I2C1_slaveWriteData;
-;                    if(sizeof(EEPROM_Buffer) <= eepromAddress)
-;                    {
-;                        eepromAddress = 0;    // wrap to start of eeprom page
-;                    }
-;                    */
 ;                    break;
 ;                }
-;
 ;            } // end switch(slaveWriteType)
-;
+I2C1SWCExit:
 ;            slaveWriteType  = SLAVE_NORMAL_DATA;
+	movlw	SLAVE_NORMAL_DATA
+	movwf	slaveWriteType
 ;            break;
+	goto I2C1SEXIT
 ;
 ;        case I2C1_SLAVE_READ_REQUEST:
-;            // EEPROM sample code
-;            /*
-;            SSP1BUF = EEPROM_Buffer[eepromAddress++];// load byte to send
-;            if(sizeof(EEPROM_Buffer) <= eepromAddress)
-;            {
-;                eepromAddress = 0;    // wrap to start of eeprom page
-;            }
-;             */
-;            // end EEPROM sample code
-;            SSP1BUF = byteFaderValue[faderNumber++];// load byte to send
+I2C1SRR:
+	; I'm not sure we need this, but we had to have it for the SPI comms
+	movf  SSP1BUF,w  ; Do a dummy read to clear flags
+;            SSP1BUF = BYTE_FADER_VALUE[faderNumber++];// load byte to send
+	clrf    FSR1H		    ; bank 0
+	movlw   #BYTE_FADER_VALUE   ; 
+	addwf	faderNumber,0	    ; get the index to the array - result in W
+	movwf	FSR1L
+	moviw   0[INDF1]		    ; get the value at that location
+	movwf	SSP1BUF
+	incf	faderNumber,w	    ; increment faderNumber.  results to W
 ;            if(faderNumber>=8) { faderNumber=0; } // roll over at 8 faders
+	andlw	0x07		    ; mask so we only have 0-7 
+	movwf	faderNumber
 ;            break;
+	goto I2C1SEXIT
 ;
 ;        case I2C1_SLAVE_READ_COMPLETED:
+I2C1SRC:
 ;            faderNumber=0; // ToDo: this is just masking the problem of faderNumber incrementing somehow when it should not
+	clrf faderNumber
 ;        default:;
+	goto I2C1SEXIT
 ;
 ;    } // end switch(i2c_bus_state)
+I2C1SEXIT:
 	return
 ;------------------------------------------------------
 ;	10 bit x 10 bit Multiply Subroutine
