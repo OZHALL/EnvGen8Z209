@@ -1298,6 +1298,8 @@ I2C1SWCExit:
 I2C1SRR:
 	; I'm not sure we need this, but we had to have it for the SPI comms
 	movf  SSP1BUF,w  ; Do a dummy read to clear flags
+	; Marshall BYTE_FADER_VALUE[] from ATTACK_CV, et al
+	call	MarshallByteFaderValue
 ;            SSP1BUF = BYTE_FADER_VALUE[faderNumber++];// load byte to send
 	clrf    FSR1H		    ; bank 0
 	movlw   #BYTE_FADER_VALUE   ; 
@@ -1321,6 +1323,62 @@ I2C1SRC:
 ;
 ;    } // end switch(i2c_bus_state)
 I2C1SEXIT:
+	return
+	
+;   Routine to marshall the data from the ATTACK_CV (D/S/R) variables into BYTE_FADER_VALUE[faderNumber]	
+MarshallByteFaderValue:
+	movf	BSR,w			; this bank "preservation" while accessing PORTC works, it is expensive
+	movwf	TEMP_BSR_INTR
+	movfw	faderNumber
+	movlb	D'0'	    ; adjust bank for ADSR2
+	brw
+	goto	Attack1
+	goto	Decay1
+	goto	Sustain1
+	goto	Release1
+	goto	Attack2
+	goto	Decay2
+	goto	Sustain2
+	goto	Release2
+Attack1:
+	movfw	ATTACK_CV
+	goto	MBFVContinue
+Decay1:
+	movfw	DECAY_CV
+	goto	MBFVContinue
+Sustain1:
+	movfw	SUSTAIN_CV
+	goto	MBFVContinue
+Release1:
+	movfw	RELEASE_CV
+	goto	MBFVContinue
+Attack2:
+	movlb	D'2'
+	movfw	ATTACK_CV
+	goto	MBFVContinue
+Decay2:
+    	movlb	D'2'
+	movfw	DECAY_CV
+	goto	MBFVContinue
+Sustain2:
+    	movlb	D'2'
+	movfw	SUSTAIN_CV
+	goto	MBFVContinue
+Release2:
+    	movlb	D'2'
+	movfw	RELEASE_CV
+	goto	MBFVContinue
+MBFVContinue:
+	movwf	TEMP_W_INTR
+	clrf    FSR1H		    ; bank 0
+	movlw   #BYTE_FADER_VALUE   ; 
+	addwf	faderNumber,0	    ; get the index to the array - result in W
+	movwf	FSR1L
+	movfw	TEMP_W_INTR
+	movwi   0[INDF1]	    ; put the value to that location 
+	; restore BSR
+	movf	TEMP_BSR_INTR,w
+	movwf	BSR
 	return
 ;------------------------------------------------------
 ;	10 bit x 10 bit Multiply Subroutine
@@ -2268,8 +2326,6 @@ Init_I2C:
 ;    // enable the master interrupt
 ;    PIE3bits.SSP1IE = 1;
 	bsf	PIE3,0		;SSP1IE is bit 0
-
-;
 ;}
 	return
 	
@@ -2328,7 +2384,7 @@ Init_Osc:
 ;-------------------------------------------------------
 
 ; org     0x300					; Need to start at 0x100 boundary
- org     0x400					; Need to start at 0x100 boundary
+ org     0x500					; Need to start at 0x100 boundary
 ; these three tables are recreated (thx Tom W.) for a 22kHz vs 31.125kHz interrupt (sample) rate`
 ControlLookupHi:
 	dt	D'16', D'14', D'13', D'13', D'12', D'11', D'10', D'10'
@@ -2456,7 +2512,7 @@ ControlLookupLo:
 ; which makes life marginally simpler.
 ;------------------------------------------------------------------------------
 ; org     0x600					; Need to start at page boundary
- org     0x700					; Need to start at page boundary
+ org     0x800					; Need to start at page boundary
 AttackCurve:
 	dt	D'0', D'0', D'231', D'1', D'202', D'3', D'171', D'5'
 	dt	D'138', D'7', D'101', D'9', D'62', D'11', D'20', D'13'
@@ -2529,7 +2585,7 @@ AttackCurve:
 	dt	D'136', D'250', D'0', D'251', D'120', D'251', D'239', D'251'
 	dt	D'101', D'252', D'219', D'252', D'80', D'253', D'196', D'253'
 	dt	D'55', D'254', D'170', D'254', D'28', D'255', D'142', D'255'
- org     0x900					; Need to start at page boundary
+ org     0xA00					; Need to start at page boundary
 	; One extra to make interp simple
 	dt	D'255', D'255'
 
