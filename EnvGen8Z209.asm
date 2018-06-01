@@ -59,7 +59,9 @@
 ;		    attack time is now sub-millisecond!!!
 ;2018-05-29 ozh - begin porting I2C support from the existing (working) C code
 ;		    see I2C1StatusCallback for I2C slave messages documentation
-;
+;2018-06-01 ozh - The I2C read seems to be working reliably
+;TODO:
+;		  Next, lets get the "Write" coded.
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -403,6 +405,18 @@
  org     0x004					; Interrupt vector location
 
 InterruptEnter:
+CheckOverrun:
+	; Check for overrun (this is tested)
+	; an overrun is indicated by the #7 LED (of 8,i.e. sustain for second EG) being on.
+	btfsc	OVERRUN_FLAG,0	; if last LED is set (indicating an overrun)
+	bsf	LATC,6		; turn on next to last LED (permanently)
+	; if we start w/ LEDLAST "off" and toggle twice (here and at the end of the Int Rtn)
+	; LED will be off most of the time
+	; if we "overrun" the interrupt routine, the light will stay on (until we overrun again)
+	movlw	BIT0
+	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
+
+WhichInterrupt:
 ; Sample rate timebase at 31.25KHz
 	movlb	D'14'				; Bank 14
 	btfsc	PIR4, TMR2IF			; Check if TMR2 interrupt
@@ -430,16 +444,6 @@ TMR2ISR:
 ;EndTest:
 	; end test
 
-CheckOverrun:
-	; Check for overrun (this is tested)
-	; an overrun is indicated by the #7 LED (of 8,i.e. sustain for second EG) being on.
-	btfsc	OVERRUN_FLAG,0	; if last LED is set (indicating an overrun)
-	bsf	LATC,6		; turn on next to last LED (permanently)
-	; if we start w/ LEDLAST "off" and toggle twice (here and at the end of the Int Rtn)
-	; LED will be off most of the time
-	; if we "overrun" the interrupt routine, the light will stay on (until we overrun again)
-	movlw	BIT0
-	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
 ;default - DAC0
 	movlw	DAC0		;start with DAC0 ;DAC1;
 	bcf	DAC_NUMBER,7    ; clear bit 7 of DAC_NUMBER 
@@ -1296,8 +1300,6 @@ I2C1SWCExit:
 ;
 ;        case I2C1_SLAVE_READ_REQUEST:
 I2C1SRR:
-	; I'm not sure we need this, but we had to have it for the SPI comms
-	movf  SSP1BUF,w  ; Do a dummy read to clear flags
 	; Marshall BYTE_FADER_VALUE[] from ATTACK_CV, et al
 	call	MarshallByteFaderValue
 ;            SSP1BUF = BYTE_FADER_VALUE[faderNumber++];// load byte to send
@@ -1329,6 +1331,7 @@ I2C1SEXIT:
 MarshallByteFaderValue:
 	movf	BSR,w			; this bank "preservation" while accessing PORTC works, it is expensive
 	movwf	TEMP_BSR_INTR
+	movlb	D'3'			; faderNumber is in bank 3
 	movfw	faderNumber
 	movlb	D'0'	    ; adjust bank for ADSR2
 	brw
@@ -1369,6 +1372,7 @@ Release2:
 	movfw	RELEASE_CV
 	goto	MBFVContinue
 MBFVContinue:
+	movlb	D'3'		    ; back to bank 3
 	movwf	TEMP_W_INTR
 	clrf    FSR1H		    ; bank 0
 	movlw   #BYTE_FADER_VALUE   ; 
@@ -2262,7 +2266,7 @@ Init_Ports:
 	movwf INTCON	    ; store it
 ;}  
 ;   set up I2C on SSP1
-	call Init_SPI2	; I2C for comms to the mother ship
+	call Init_I2C	; I2C for comms to the mother ship
 ;   set up SPI on SSP2
 	call Init_SPI2	; SPI for DAC
 	
