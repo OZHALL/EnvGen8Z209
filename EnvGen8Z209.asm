@@ -260,6 +260,8 @@
 	TIME_CV						; TIME is used directly
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
 
+	MODEL_VALUE
+	FADERACTIVE_FLAG
   ENDC
   CBLOCK 0x060
 	;BYTE_FADER_VALUE[8]  
@@ -1146,7 +1148,11 @@ I2C1StatusCallback:
 	goto I2C1SRR	    ;I2C1_SLAVE_READ_REQUEST 1
 	goto I2C1SWC	    ;I2C1_SLAVE_WRITE_COMPLETED 2
 	goto I2C1SRC	    ;I2C1_SLAVE_READ_COMPLETED 3
+;
+;
 ;        case I2C1_SLAVE_WRITE_REQUEST:
+;
+;
 I2C1SWR:
 ;            // the master will be sending the eeprom address next
 ;            slaveWriteType  = SLAVE_DATA_ADDRESS;
@@ -1155,7 +1161,10 @@ I2C1SWR:
 ;            break;
 	goto I2C1SEXIT
 ;
+;
 ;        case I2C1_SLAVE_WRITE_COMPLETED:
+;
+;
 I2C1SWC:
 ;            switch(slaveWriteType)
 ;            {
@@ -1298,7 +1307,10 @@ I2C1SWCExit:
 ;            break;
 	goto I2C1SEXIT
 ;
+;
 ;        case I2C1_SLAVE_READ_REQUEST:
+;
+;
 I2C1SRR:
 	; Marshall BYTE_FADER_VALUE[] from ATTACK_CV, et al
 	call	MarshallByteFaderValue
@@ -1327,7 +1339,10 @@ I2C1SRC:
 I2C1SEXIT:
 	return
 	
-;   Routine to marshall the data from the ATTACK_CV (D/S/R) variables into BYTE_FADER_VALUE[faderNumber]	
+;   Routine to marshall the data from the ATTACK_CV (D/S/R) variables into BYTE_FADER_VALUE[faderNumber]
+;
+;TODO:   rework this once we are using BYTE_FADER_VALUE[] as the model
+;
 MarshallByteFaderValue:
 	movf	BSR,w			; this bank "preservation" while accessing PORTC works, it is expensive
 	movwf	TEMP_BSR_INTR
@@ -1794,7 +1809,6 @@ Main:
 	call	PartyLights
 	call	PartyLights
 	call	PartyLights
-	call	PartyLights
 	
 	clrf	OVERRUN_FLAG		;init this flag
 	
@@ -1927,7 +1941,8 @@ Main:
 	clrf	CHANGES
 
 	bcf	LEDLAST		    ; begin w/the last LED off - see CheckOverrun
-
+	movlw	0xFF		    ; set the takeover flags to 1 (active)
+	movwf	FaderTakeoverFlags
 ; now copy the 20 registers which define the operation of the EG0 to EG1 model
 
 	movlw	DAC1		; same for both at this point
@@ -1942,16 +1957,40 @@ Main:
 MainLoop:
 	; Change to next A/D channel
 	incf	ADC_CHANNEL, f
+	movf	ADC_CHANNEL,w
+	andlw	0x07
+	movwf	ADC_CHANNEL	    ; index is in ADC_CHANNEL
+;	get model value
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addwf	ADC_CHANNEL,0	    ; set up index
+	movwf	FSR0L
+	moviw	0[INDF0]	    ; model value for this fader is in W
+	movwf	MODEL_VALUE	    ; model value is in MODEL_VALUE
+	
+	movlw	D'0'
+	btfsc	FaderTakeoverFlags,ADC_CHANNEL
+	movlw	D'1'
+	;WREG now has takeover (active) flag
+	movwf	FADERACTIVE_FLAG
+;   "Arbiter" code to be sure that a "write" from Master (the programmer - e.g. MatrixSwitch)
+;	is not instantly replaced by the next fader read.   Fader must "take over"
 	
 ; We need to do different things depending on which value we're reading:
+
 SelectADCChannel:
+    	;leverage the fact that the ADC_CHANNEL = relative fader number = A,D,S,R,A,D,S,R
 	movf	ADC_CHANNEL, w		; Get current channel
-	andlw	0x07			; Only want 3 LSBs
+	call	DoADConversion		; this is the only call to DoADConversion
+;	movwf	ADC_VALUE		; new fader value - it's there from call
+	
+	movf	ADC_CHANNEL, w		; Get current channel (again)	
+; did this above	andlw	0x07			; Only want 3 LSBs
 	brw				; Computed branch
-	goto	AttackCV
-	goto	DecayCV
-	goto	SustainCV
-	goto	ReleaseCV
+	goto	Attack0CV
+	goto	Decay0CV
+	goto	Sustain0CV
+	goto	Release0CV
 	goto	Attack1CV
 	goto	Decay1CV
 	goto	Sustain1CV
@@ -1968,10 +2007,23 @@ ScannedAllChannels:
 
 
 ; Update the Attack CV
-AttackCV:
-	movlw	D'0'		; ANA0
-	call	DoADConversion
+Attack0CV:
+;	movfw	ADC_CHANNEL;	D'0'		; ANA0
+;	call	DoADConversion 
+	movf	ADC_VALUE,w			; put the value in the expected place
 	movwf	ATTACK_CV
+	
+	movf	FADERACTIVE_FLAG,w		;load flag
+	bnz	A0Active
+;	the fader is not active.  
+	
+;	now, decide if it should be activated
+	;if not ...
+	;goto	MainLoop
+	;else
+	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+	;and flow thru to the fader active code
+A0Active:    
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
 	subwf	ATTACK_CV, w
@@ -1993,13 +2045,14 @@ AttackCV:
 
 Attack1CV:
 	;DoADConversion will set bank to 0
-	movlw	D'4'		; ANA4
-	call	DoADConversion
-
-	movwf	TEMP		;save WREG in the TEMP variable
+;	movlw	D'4'		; ANA4
+;	call	DoADConversion
+;	movwf	TEMP		;save WREG in the TEMP variable
+	
 	movfw	BSR		;preserve BSR
 	movwf	TEMP_BSR
-	movfw	TEMP		;restore WREG
+;	movfw	TEMP		;restore WREG
+	movf	ADC_VALUE,w			; put the value in the expected place
 	movlb	D'2'		; Bank 2
 	movwf	ATTACK_CV
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
@@ -2022,12 +2075,12 @@ Attack1CV:
 	movf	TEMP_BSR,w		; restore BSR
 	movwf	BSR
 	goto	MainLoop
-
 	
 ; Update the Decay CV
-DecayCV:
-	movlw	D'1'		; ANA1
-	call	DoADConversion
+Decay0CV:
+;	movlw	D'1'		; ANA1
+;	call	DoADConversion
+	movf	ADC_VALUE,w			; put the value in the expected place
 	movwf	DECAY_CV
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
@@ -2049,13 +2102,14 @@ DecayCV:
 	goto	MainLoop
 
 Decay1CV:	
-	movlw	D'5'		; ANA5
-	call	DoADConversion
+;	movlw	D'5'		; ANA5
+;	call	DoADConversion
 
-	movwf	TEMP		;save WREG in the TEMP variable
+;	movwf	TEMP		;save WREG in the TEMP variable
 	movfw	BSR		;preserve BSR
 	movwf	TEMP_BSR
-	movfw	TEMP		;restore WREG
+;	movfw	TEMP		;restore WREG
+	movf	ADC_VALUE,w			; put the value in the expected place
 	movlb	D'2'		; Bank 2
 	movwf	DECAY_CV
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
@@ -2080,26 +2134,29 @@ Decay1CV:
 	goto	MainLoop
 	
 ; Update the Sustain CV
-SustainCV:
-	movlw	D'2'		; ANA2
-	call	DoADConversion
+Sustain0CV:
+;	movlw	D'2'		; ANA2
+;	call	DoADConversion
+	movf	ADC_VALUE,w			; put the value in the expected place
 	movwf	SUSTAIN_CV			; Simply store this one- easy!
 	goto	MainLoop
 
 ; Update the Sustain CV
 Sustain1CV:
-	movlw	D'6'		; ANA6
-	call	DoADConversion
+;	movlw	D'6'		; ANA6
+;	call	DoADConversion
+	movf	ADC_VALUE,w			; put the value in the expected place
 	movlb	D'2'		; change to bank 2
 	movwf	SUSTAIN_CV	; Simply store this one- easy!
 	movlb	D'0'		; change back to bank 0
 	goto	MainLoop
 	
 ; Update the Release CV
-ReleaseCV:
+Release0CV:
 ;	movlw	b'00010101'			; AN5, ADC On
-	movlw	D'3'		; ANA3
-	call	DoADConversion
+;	movlw	D'3'		; ANA3
+;	call	DoADConversion
+	movf	ADC_VALUE,w			; put the value in the expected place
 	movwf	RELEASE_CV
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
@@ -2122,13 +2179,14 @@ ReleaseCV:
 
 ; Update the Release CV
 Release1CV:
-	movlw	D'7'		; ANA7
-	call	DoADConversion
+;	movlw	D'7'		; ANA7
+;	call	DoADConversion
 
-	movwf	TEMP		;save WREG in the TEMP variable
+;	movwf	TEMP		;save WREG in the TEMP variable
 	movfw	BSR		;preserve BSR
 	movwf	TEMP_BSR
-	movfw	TEMP		;restore WREG
+;	movfw	TEMP		;restore WREG
+	movf	ADC_VALUE,w			; put the value in the expected place
 	movlb	D'2'		; Bank 2
 	movwf	RELEASE_CV
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
