@@ -409,6 +409,7 @@
 InterruptEnter:
 CheckOverrun:
 	; Check for overrun (this is tested)
+	movlb	D'0'				; Bank 0 ;D'2' ; Bank 2 ;
 	; an overrun is indicated by the #7 LED (of 8,i.e. sustain for second EG) being on.
 	btfsc	OVERRUN_FLAG,0	; if last LED is set (indicating an overrun)
 	bsf	LATC,6		; turn on next to last LED (permanently)
@@ -981,14 +982,12 @@ InterruptExit:
 	movlw	DAC1
 	goto	IntLoop
 FinishedEG1:
+	movlb	D'0'				; Bank 0
 ;   force an overrun
-;	movlb	D'0'				; Bank 0
 ;	call Delay25us
 	; second toggle for the CheckOverrun
 	movlw	BIT0
 	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
-;	should not need this
-;	movlb	D'0'				; Bank 0
 	retfie
 	
 ;	put this variable in the same bank as the SSP1BUF registers
@@ -1941,8 +1940,10 @@ Main:
 	clrf	CHANGES
 
 	bcf	LEDLAST		    ; begin w/the last LED off - see CheckOverrun
+	movlb	D'3'
 	movlw	0xFF		    ; set the takeover flags to 1 (active)
 	movwf	FaderTakeoverFlags
+	movlb	D'0'
 ; now copy the 20 registers which define the operation of the EG0 to EG1 model
 
 	movlw	DAC1		; same for both at this point
@@ -1955,6 +1956,7 @@ Main:
 
 	movlb	D'0'				; Bank 0
 MainLoop:
+;	movlb	D'0'				; Bank 0 - commented out.  it appears to stay at 0 here
 	; Change to next A/D channel
 	incf	ADC_CHANNEL, f
 	movf	ADC_CHANNEL,w
@@ -1968,10 +1970,12 @@ MainLoop:
 	moviw	0[INDF0]	    ; model value for this fader is in W
 	movwf	MODEL_VALUE	    ; model value is in MODEL_VALUE
 	
+	movlb	D'3'		    ; FaderTakeoverFlags in bank 3
 	movlw	D'0'
 	btfsc	FaderTakeoverFlags,ADC_CHANNEL
 	movlw	D'1'
 	;WREG now has takeover (active) flag
+	movlb	D'0'
 	movwf	FADERACTIVE_FLAG
 ;   "Arbiter" code to be sure that a "write" from Master (the programmer - e.g. MatrixSwitch)
 ;	is not instantly replaced by the next fader read.   Fader must "take over"
@@ -1983,7 +1987,7 @@ SelectADCChannel:
 	movf	ADC_CHANNEL, w		; Get current channel
 	call	DoADConversion		; this is the only call to DoADConversion
 ;	movwf	ADC_VALUE		; new fader value - it's there from call
-	
+;	bank is D'0' coming out of DoADConversion	
 	movf	ADC_CHANNEL, w		; Get current channel (again)	
 ; did this above	andlw	0x07			; Only want 3 LSBs
 	brw				; Computed branch
@@ -2001,10 +2005,9 @@ SelectADCChannel:
 
 ScannedAllChannels:
 	; Reset ADC channel 
-	movlw	D'7'
+	movlw	D'7'				; set up to roll over at next incf
 	movwf	ADC_CHANNEL
 	goto	MainLoop
-
 
 ; Update the Attack CV
 Attack0CV:
@@ -2019,7 +2022,7 @@ Attack0CV:
 	
 ;	now, decide if it should be activated
 	;if not ...
-	;goto	MainLoop
+	goto	MainLoop
 	;else
 	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
@@ -2048,7 +2051,17 @@ Attack1CV:
 ;	movlw	D'4'		; ANA4
 ;	call	DoADConversion
 ;	movwf	TEMP		;save WREG in the TEMP variable
+	movf	FADERACTIVE_FLAG,w		;load flag
+	bnz	A1Active
+;	the fader is not active.  
 	
+;	now, decide if it should be activated
+	;if not ...
+	goto	MainLoop			; for now, do nothing if fader not active
+	;else
+	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+	;and flow thru to the fader active code
+A1Active:	
 	movfw	BSR		;preserve BSR
 	movwf	TEMP_BSR
 ;	movfw	TEMP		;restore WREG
@@ -2082,6 +2095,18 @@ Decay0CV:
 ;	call	DoADConversion
 	movf	ADC_VALUE,w			; put the value in the expected place
 	movwf	DECAY_CV
+	
+	movf	FADERACTIVE_FLAG,w		;load flag
+	bnz	A0Decay
+;	the fader is not active.  
+	
+;	now, decide if it should be activated
+	;if not ...
+	goto	MainLoop
+	;else
+	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+	;and flow thru to the fader active code
+A0Decay:
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
 	subwf	DECAY_CV, w
@@ -2104,7 +2129,18 @@ Decay0CV:
 Decay1CV:	
 ;	movlw	D'5'		; ANA5
 ;	call	DoADConversion
-
+	
+	movf	FADERACTIVE_FLAG,w		;load flag
+	bnz	A1Decay
+;	the fader is not active.  
+	
+;	now, decide if it should be activated
+	;if not ...
+	goto	MainLoop
+	;else
+	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+	;and flow thru to the fader active code
+A1Decay:
 ;	movwf	TEMP		;save WREG in the TEMP variable
 	movfw	BSR		;preserve BSR
 	movwf	TEMP_BSR
@@ -2137,6 +2173,18 @@ Decay1CV:
 Sustain0CV:
 ;	movlw	D'2'		; ANA2
 ;	call	DoADConversion
+	
+	movf	FADERACTIVE_FLAG,w		;load flag
+	bnz	A0Sustain
+;	the fader is not active.  
+	
+;	now, decide if it should be activated
+	;if not ...
+	goto	MainLoop
+	;else
+	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+	;and flow thru to the fader active code
+A0Sustain:
 	movf	ADC_VALUE,w			; put the value in the expected place
 	movwf	SUSTAIN_CV			; Simply store this one- easy!
 	goto	MainLoop
@@ -2145,6 +2193,17 @@ Sustain0CV:
 Sustain1CV:
 ;	movlw	D'6'		; ANA6
 ;	call	DoADConversion
+	movf	FADERACTIVE_FLAG,w		;load flag
+	bnz	A1Sustain
+;	the fader is not active.  
+	
+;	now, decide if it should be activated
+	;if not ...
+	goto	MainLoop
+	;else
+	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+	;and flow thru to the fader active code
+A1Sustain:
 	movf	ADC_VALUE,w			; put the value in the expected place
 	movlb	D'2'		; change to bank 2
 	movwf	SUSTAIN_CV	; Simply store this one- easy!
@@ -2158,6 +2217,19 @@ Release0CV:
 ;	call	DoADConversion
 	movf	ADC_VALUE,w			; put the value in the expected place
 	movwf	RELEASE_CV
+	
+	movf	FADERACTIVE_FLAG,w		;load flag
+	bnz	A0Release
+;	the fader is not active.  
+	
+;	now, decide if it should be activated
+	;if not ...
+	goto	MainLoop
+	;else
+	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+	;and flow thru to the fader active code
+A0Release:
+
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
 	subwf	RELEASE_CV, w
@@ -2181,7 +2253,18 @@ Release0CV:
 Release1CV:
 ;	movlw	D'7'		; ANA7
 ;	call	DoADConversion
-
+    
+	movf	FADERACTIVE_FLAG,w		;load flag
+	bnz	A1Release
+;	the fader is not active.  
+	
+;	now, decide if it should be activated
+	;if not ...
+	goto	MainLoop
+	;else
+	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+	;and flow thru to the fader active code
+A1Release:
 ;	movwf	TEMP		;save WREG in the TEMP variable
 	movfw	BSR		;preserve BSR
 	movwf	TEMP_BSR
