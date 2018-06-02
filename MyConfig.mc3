@@ -1,4 +1,4 @@
-<config configVersion="1.1" device="PIC16F18855" coreVersion="4.26">
+<config configVersion="1.1" device="PIC16F18855" coreVersion="4.26.2">
    <usedClasses class="java.util.HashMap">
       <entry>
          <string>System Module</string>
@@ -26,7 +26,7 @@
       </entry>
    </usedClasses>
    <usedLibraries class="java.util.ArrayList">
-      <ILibraryFile class="com.microchip.mcc.core.library.BaseLibraryFile" libraryClass="com.microchip.mcc.mcu8.Mcu8PeripheralLibrary" version="1.45"/>
+      <ILibraryFile class="com.microchip.mcc.runner.services.RunnerLibraryFile" libraryClass="com.microchip.mcc.mcu8.Mcu8PeripheralLibrary" version="1.45"/>
    </usedLibraries>
    <tokenMap class="java.util.HashMap">
       <entry>

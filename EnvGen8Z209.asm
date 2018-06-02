@@ -420,7 +420,7 @@ CheckOverrun:
 	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
 
 WhichInterrupt:
-; Sample rate timebase at 31.25KHz
+; Sample rate timebase at 31.25KHz (note: for DualEG, the rate is c. 22KHz)
 	movlb	D'14'				; Bank 14
 	btfsc	PIR4, TMR2IF			; Check if TMR2 interrupt
 	goto	TMR2ISR
@@ -1029,7 +1029,7 @@ I2C1Isr:
 ;
 	movlb	D'14'
 ;    PIR3bits.SSP1IF = 0;        // clear the slave interrupt flag
-	bcf	PIR3,0		; bit 0
+	bcf	PIR3,0		; bit 0 SSP1IF
 	movlb	D'3'
 ;    i2c_data        = SSP1BUF;  // read SSPBUF to clear BF
 	movfw	SSP1BUF
