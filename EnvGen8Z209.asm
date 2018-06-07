@@ -1063,7 +1063,7 @@ SSP1STATSlaveRead:
 ;    }
 ;    else if(0 == SSP1STATbits.D_nA)
 SSP1STATWrite:
-	btfsc	SSP1CON2,6	    ;bit 6 = ACKSTAT
+	btfsc	SSP1STAT,5	    ;bit 5 = D_nA
 	goto	SSP1STATWriteData
 ;    {
 ;        // this is an I2C address
@@ -1083,7 +1083,8 @@ SSP1STATWriteData:
 ;        // callback routine should process I2C1_slaveWriteData from the master
 ;        I2C1_StatusCallback(I2C1_SLAVE_WRITE_COMPLETED);
 	movlw	I2C1_SLAVE_WRITE_COMPLETED
-	goto	I2C1IsrExit
+;	just flow thru to I2C1ISsrExit
+;	goto	I2C1IsrExit
 ;    }
 ;
 I2C1IsrExit:
@@ -1131,7 +1132,7 @@ I2C1StatusCallback:
 ;    const uint8_t cModeWriteLED = 0b00010000;
 ;    const uint8_t cModeReadADC  = 0b00100000;
 ;    const uint8_t cModeWriteADC = 0b00110000;
-#define cModeConfig B'00000000'	    ;   // unused now
+#define cModeConfig   B'00000000'	    ;   // unused now
 #define cModeWriteLED B'00010000' 
 #define cModeReadADC  B'00100000'   
 #define cModeWriteADC B'00110000'
@@ -1155,10 +1156,10 @@ I2C1StatusCallback:
 I2C1SWR:
 ;            // the master will be sending the eeprom address next
 ;            slaveWriteType  = SLAVE_DATA_ADDRESS;
-	movfw	SLAVE_DATA_ADDRESS
+	movlw	SLAVE_DATA_ADDRESS
 	movwf	slaveWriteType
 ;            break;
-	goto I2C1SEXIT
+	goto I2C1SCEXIT  
 ;
 ;
 ;        case I2C1_SLAVE_WRITE_COMPLETED:
@@ -1211,7 +1212,6 @@ NotModeWriteADC:
 	movfw	wkPBMode	
 	xorlw	cModeReadADC
 	bnz	I2C1SWCExit	
-	
 ;                                faderNumber=0;  //  assigning this does not work!: wkPBAddr;  // start with this fader #
 	clrf faderNumber	
 ;                            }
@@ -1220,7 +1220,6 @@ NotModeWriteADC:
 ;                    break;
 ;                }
 	goto I2C1SWCExit
-;
 ;
 ;                case SLAVE_NORMAL_DATA:
 ;                default:
@@ -1265,11 +1264,11 @@ SWCNNotModeWriteLED:
 ;                                //do { LATCbits.LATC5 = ~LATCbits.LATC5; } while(0);// show last one
 ;                            }
 SWCIncFaderChange:
-	incf	iFaderBytesChangedCount
+	incf	iFaderBytesChangedCount,1   ; 1 = results to file
 ;                            if(faderNumber<cMaxFaderCnt){ // don't write past the buffer
 	movfw	cMaxFaderCnt
 	subwfb	faderNumber,0	
-	bnc	I2C1SWCIncFader	
+	bnc	I2C1SWCIncFader	    ; TODO - be sure this works as expected
 ;                                BYTE_FADER_VALUE[faderNumber]=I2C1_slaveWriteData;
 	clrf    FSR1H		    ; bank 0
 	movlw   #BYTE_FADER_VALUE   ; 
@@ -1304,7 +1303,7 @@ I2C1SWCExit:
 	movlw	SLAVE_NORMAL_DATA
 	movwf	slaveWriteType
 ;            break;
-	goto I2C1SEXIT
+	goto I2C1SCEXIT
 ;
 ;
 ;        case I2C1_SLAVE_READ_REQUEST:
@@ -1325,17 +1324,18 @@ I2C1SRR:
 	andlw	0x07		    ; mask so we only have 0-7 
 	movwf	faderNumber
 ;            break;
-	goto I2C1SEXIT
+	goto I2C1SCEXIT
 ;
 ;        case I2C1_SLAVE_READ_COMPLETED:
 I2C1SRC:
 ;            faderNumber=0; // ToDo: this is just masking the problem of faderNumber incrementing somehow when it should not
 	clrf faderNumber
 ;        default:;
-	goto I2C1SEXIT
+;	just flow thru to the exit
+;	goto I2C1SCEXIT
 ;
 ;    } // end switch(i2c_bus_state)
-I2C1SEXIT:
+I2C1SCEXIT:
 	return
 	
 ;   Routine to marshall the data from the ATTACK_CV (D/S/R) variables into BYTE_FADER_VALUE[faderNumber]
