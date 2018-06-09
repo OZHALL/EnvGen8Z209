@@ -1240,6 +1240,7 @@ I2C1SWC_Normal:
 	movwf	MSByteLED
 ;                            iLEDBytesChangedCount++;
 	incf	iLEDBytesChangedCount,1	    ; 1 = results to file 
+	goto	I2C1SWCExit
 ;                        }else{
 SWCNLEDChanged:
 ;                            LSByteLED=I2C1_slaveWriteData;
@@ -1249,6 +1250,7 @@ SWCNLEDChanged:
 ;                            iLEDBytesChangedCount++;
 	incf	iLEDBytesChangedCount,1	    ; 1 = results to file 
 ;                        }
+	goto	I2C1SWCExit
 ;                    }else{
 SWCNNotModeWriteLED:
 ;                        if (wkPBMode==cModeWriteADC){
@@ -1296,6 +1298,8 @@ I2C1SWCIncFader:
 ;                        } 
 ;                    }
 ;                    break;
+;	flow thru
+;	goto	I2C1SWCExit
 ;                }
 ;            } // end switch(slaveWriteType)
 I2C1SWCExit:
@@ -1311,7 +1315,7 @@ I2C1SWCExit:
 ;
 I2C1SRR:
 	; Marshall BYTE_FADER_VALUE[] from ATTACK_CV, et al
-	call	MarshallByteFaderValue
+	;call	MarshallByteFaderValue - don't need to do this now. update happens in loop when fader is updated
 ;            SSP1BUF = BYTE_FADER_VALUE[faderNumber++];// load byte to send
 	clrf    FSR1H		    ; bank 0
 	movlw   #BYTE_FADER_VALUE   ; 
@@ -2018,15 +2022,35 @@ Attack0CV:
 	
 	movf	FADERACTIVE_FLAG,w		;load flag
 	bnz	A0Active
-;	the fader is not active.  
+;	flag is zero, the fader is not active. 
+;	TODO: make this more selective ( i.e. don't update if no change from prev )
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'0'		    ; Attack 0
+	movwf	FSR0L
+	moviw	0[INDF0]	    ; get model value for this fader from W	
+	movwf	ADC_VALUE	    ; update the new value
 	
 ;	now, decide if it should be activated
 	;if not ...
-	goto	MainLoop
+;	goto	MainLoop
 	;else
-	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
-A0Active:    
+A0Active: 
+	;end test
+;	movlb	D'3'
+;	bcf	FaderTakeoverFlags,ADC_CHANNEL	;reset active flag
+;	movlb	D'0'
+	;end test
+;	update model from fader
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'0'		    ; Attack 0
+	movwf	FSR0L
+	movfw	ADC_VALUE	    ; get the new value
+	movwi	0[INDF0]	    ; update model value for this fader from W
+	
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
 	subwf	ATTACK_CV, w
@@ -2053,15 +2077,30 @@ Attack1CV:
 ;	movwf	TEMP		;save WREG in the TEMP variable
 	movf	FADERACTIVE_FLAG,w		;load flag
 	bnz	A1Active
-;	the fader is not active.  
+;	flag is zero, the fader is not active. 
+;	TODO: make this more selective ( i.e. don't update if no change from prev )
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'4'		    ; Attack 1
+	movwf	FSR0L
+	moviw	0[INDF0]	    ; get model value for this fader from W	
+	movwf	ADC_VALUE	    ; update the new value 
 	
 ;	now, decide if it should be activated
 	;if not ...
-	goto	MainLoop			; for now, do nothing if fader not active
+;	goto	MainLoop			; for now, do nothing if fader not active
 	;else
-	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
-A1Active:	
+A1Active:
+    ;	update model from fader
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'4'		    ; Attack 1
+	movwf	FSR0L
+	movfw	ADC_VALUE	    ; get the new value
+	movwi	0[INDF0]	    ; update model value for this fader from W
+	
 	movfw	BSR		;preserve BSR
 	movwf	TEMP_BSR
 ;	movfw	TEMP		;restore WREG
@@ -2098,15 +2137,30 @@ Decay0CV:
 	
 	movf	FADERACTIVE_FLAG,w		;load flag
 	bnz	A0Decay
-;	the fader is not active.  
+;	flag is zero, the fader is not active. 
+;	TODO: make this more selective ( i.e. don't update if no change from prev )
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'1'		    ; Decay 0
+	movwf	FSR0L
+	moviw	0[INDF0]	    ; get model value for this fader from W	
+	movwf	ADC_VALUE	    ; update the new value  
 	
 ;	now, decide if it should be activated
 	;if not ...
-	goto	MainLoop
+;	goto	MainLoop
 	;else
-	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
 A0Decay:
+;	update model from fader
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'1'		    ; Decay 0
+	movwf	FSR0L
+	movfw	ADC_VALUE	    ; get the new value
+	movwi	0[INDF0]	    ; update model value for this fader from W
+	
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
 	subwf	DECAY_CV, w
@@ -2132,15 +2186,30 @@ Decay1CV:
 	
 	movf	FADERACTIVE_FLAG,w		;load flag
 	bnz	A1Decay
-;	the fader is not active.  
+;	flag is zero, the fader is not active. 
+;	TODO: make this more selective ( i.e. don't update if no change from prev )
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'5'		    ; Decay 1
+	movwf	FSR0L
+	moviw	0[INDF0]	    ; get model value for this fader from W	
+	movwf	ADC_VALUE	    ; update the new value  
 	
 ;	now, decide if it should be activated
 	;if not ...
-	goto	MainLoop
+;	goto	MainLoop
 	;else
-	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
 A1Decay:
+;	update model from fader
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'5'		    ; Decay 1
+	movwf	FSR0L
+	movfw	ADC_VALUE	    ; get the new value
+	movwi	0[INDF0]	    ; update model value for this fader from W
+	
 ;	movwf	TEMP		;save WREG in the TEMP variable
 	movfw	BSR		;preserve BSR
 	movwf	TEMP_BSR
@@ -2176,16 +2245,31 @@ Sustain0CV:
 	
 	movf	FADERACTIVE_FLAG,w		;load flag
 	bnz	A0Sustain
-;	the fader is not active.  
+;	flag is zero, the fader is not active. 
+;	TODO: make this more selective ( i.e. don't update if no change from prev )
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'2'		    ; Sustain 0
+	movwf	FSR0L
+	moviw	0[INDF0]	    ; get model value for this fader from W	
+	movwf	ADC_VALUE	    ; update the new value  
 	
 ;	now, decide if it should be activated
 	;if not ...
-	goto	MainLoop
+;	goto	MainLoop
 	;else
-	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
 A0Sustain:
-	movf	ADC_VALUE,w			; put the value in the expected place
+;	update model from fader
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'2'		    ; Sustain 0
+	movwf	FSR0L
+	movfw	ADC_VALUE	    ; get the new value
+	movwi	0[INDF0]	    ; update model value for this fader from W
+	
+;	movfw	ADC_VALUE			; put the value in the expected place
 	movwf	SUSTAIN_CV			; Simply store this one- easy!
 	goto	MainLoop
 
@@ -2195,16 +2279,31 @@ Sustain1CV:
 ;	call	DoADConversion
 	movf	FADERACTIVE_FLAG,w		;load flag
 	bnz	A1Sustain
-;	the fader is not active.  
+;	flag is zero, the fader is not active. 
+;	TODO: make this more selective ( i.e. don't update if no change from prev )
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'6'		    ; Sustain 1
+	movwf	FSR0L
+	moviw	0[INDF0]	    ; get model value for this fader from W	
+	movwf	ADC_VALUE	    ; update the new value 
 	
 ;	now, decide if it should be activated
 	;if not ...
-	goto	MainLoop
+;	goto	MainLoop
 	;else
-	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
 A1Sustain:
-	movf	ADC_VALUE,w			; put the value in the expected place
+;	update model from fader
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'6'		    ; Sustain 1
+	movwf	FSR0L
+	movfw	ADC_VALUE	    ; get the new value
+	movwi	0[INDF0]	    ; update model value for this fader from W
+	
+;	movfw	ADC_VALUE			; put the value in the expected place
 	movlb	D'2'		; change to bank 2
 	movwf	SUSTAIN_CV	; Simply store this one- easy!
 	movlb	D'0'		; change back to bank 0
@@ -2220,16 +2319,30 @@ Release0CV:
 	
 	movf	FADERACTIVE_FLAG,w		;load flag
 	bnz	A0Release
-;	the fader is not active.  
+;	flag is zero, the fader is not active. 
+;	TODO: make this more selective ( i.e. don't update if no change from prev )
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'3'		    ; Release 0
+	movwf	FSR0L
+	moviw	0[INDF0]	    ; get model value for this fader from W	
+	movwf	ADC_VALUE	    ; update the new value  
 	
 ;	now, decide if it should be activated
 	;if not ...
-	goto	MainLoop
+;	goto	MainLoop
 	;else
-	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
 A0Release:
-
+;	update model from fader
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'3'		    ; Release 0
+	movwf	FSR0L
+	movfw	ADC_VALUE	    ; get the new value
+	movwi	0[INDF0]	    ; update model value for this fader from W
+	
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
 	subwf	RELEASE_CV, w
@@ -2256,15 +2369,30 @@ Release1CV:
     
 	movf	FADERACTIVE_FLAG,w		;load flag
 	bnz	A1Release
-;	the fader is not active.  
+;	flag is zero, the fader is not active. 
+;	TODO: make this more selective ( i.e. don't update if no change from prev )
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'7'		    ; Release 1
+	movwf	FSR0L
+	moviw	0[INDF0]	    ; get model value for this fader from W	
+	movwf	ADC_VALUE	    ; update the new value    
 	
 ;	now, decide if it should be activated
 	;if not ...
-	goto	MainLoop
+;	goto	MainLoop
 	;else
-	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
+;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
 A1Release:
+;	update model from fader
+	clrf	FSR0H		    ; bank 0 for model
+	movlw	#BYTE_FADER_VALUE   ; model array
+	addlw	D'7'		    ; Release 1
+	movwf	FSR0L
+	movfw	ADC_VALUE	    ; get the new value
+	movwi	0[INDF0]	    ; update model value for this fader from W
+	
 ;	movwf	TEMP		;save WREG in the TEMP variable
 	movfw	BSR		;preserve BSR
 	movwf	TEMP_BSR
