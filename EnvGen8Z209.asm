@@ -1159,6 +1159,7 @@ I2C1SWR:
 ;            slaveWriteType  = SLAVE_DATA_ADDRESS;
 	movlw	SLAVE_DATA_ADDRESS
 	movwf	slaveWriteType
+	clrf	faderNumber
 ;	ignore the i2c_data ... it's just the address (0x68) logical left shifted (i.e. 0xD0)
 ;            break;
 	goto I2C1SCEXIT  
@@ -1206,7 +1207,7 @@ NotModeWriteLED:
 	bnz	NotModeWriteADC		
 ;                            iFaderBytesChangedCount=0;
 	clrf iFaderBytesChangedCount
-;                            faderNumber=0;  //  assigning this does not work! (???) : wkPBAddr;  // start with this fader #   
+;                            faderNumber=0;  // start with this fader #   
 	clrf faderNumber
 	goto	I2C1SWCExit
 ;                        }else{
@@ -1274,9 +1275,9 @@ SWCNNotModeWriteLED:
 SWCIncFaderChange:
 	incf	iFaderBytesChangedCount,1   ; 1 = results to file
 ;                            if(faderNumber<cMaxFaderCnt){ // don't write past the buffer
-	movfw	cMaxFaderCnt
-	subwfb	faderNumber,0	
-	bnc	I2C1SWCIncFader	    ; TODO - be sure this works as expected
+	movlw	cMaxFaderCnt	    ; 
+	subwf	faderNumber,0	    ; faderNumber - w will be negative (e.g. F8 with Carry=0) for faderNumber 0-7
+	bc	I2C1SWCIncFader	    ; of Carry=0 W > f   TODO - be sure this works as expected
 ;                                BYTE_FADER_VALUE[faderNumber]=I2C1_slaveWriteData;
 	clrf    FSR1H		    ; bank 0
 	movlw   #BYTE_FADER_VALUE   ; 
@@ -1291,7 +1292,10 @@ SWCIncFaderChange:
 	movfw	I2C1_slaveWriteData
 	movwi   0[INDF1]	    ; put the value to that location	
 ;                                bFaderTakeoverFlag[faderNumber]=false;
-	bcf	FaderTakeoverFlags,faderNumber	    ; this will only use first 3 bits of faderNumber
+;	this next line did now work properly.  for faderNumber=0 it changed FF to 7F
+;	bcf	FaderTakeoverFlags,faderNumber	    ; this will only use first 3 bits of faderNumber
+	clrf	FaderTakeoverFlags		    ; we should be getting all 8 faders, so set them all
+	; TODO: only need to do ^^^ this once!
 ;                            }
 I2C1SWCIncFader:
 ;                            faderNumber++;
@@ -2217,12 +2221,12 @@ MainLoop:
 	andlw	0x07
 	movwf	ADC_CHANNEL	    ; index is in ADC_CHANNEL
 ;	get model value
-	clrf	FSR0H		    ; bank 0 for model
-	movlw	#BYTE_FADER_VALUE   ; model array
-	addwf	ADC_CHANNEL,0	    ; set up index
-	movwf	FSR0L
-	moviw	0[INDF0]	    ; model value for this fader is in W
-	movwf	MODEL_VALUE	    ; model value is in MODEL_VALUE
+;	clrf	FSR0H		    ; bank 0 for model
+;	movlw	#BYTE_FADER_VALUE   ; model array
+;	addwf	ADC_CHANNEL,0	    ; set up index
+;	movwf	FSR0L
+;	moviw	0[INDF0]	    ; model value for this fader is in W
+;	movwf	MODEL_VALUE	    ; model value is in MODEL_VALUE
 	
 	movlb	D'3'		    ; FaderTakeoverFlags in bank 3
 	movlw	D'0'
@@ -2267,8 +2271,8 @@ ScannedAllChannels:
 Attack0CV:
 ;	movfw	ADC_CHANNEL;	D'0'		; ANA0
 ;	call	DoADConversion 
-	movf	ADC_VALUE,w			; put the value in the expected place
-	movwf	ATTACK_CV
+;	movf	ADC_VALUE,w			; put the value in the expected place
+;	movwf	ATTACK_CV do this below
 	
 	movf	FADERACTIVE_FLAG,w		;load flag
 	bnz	A0Active
@@ -2280,7 +2284,7 @@ Attack0CV:
 	movwf	FSR0L
 	moviw	0[INDF0]	    ; get model value for this fader from W	
 	movwf	ADC_VALUE	    ; update the new value
-	
+	goto	A0CalcInc	    ; go to the continue code
 ;	now, decide if it should be activated
 	;if not ...
 ;	goto	MainLoop
@@ -2299,11 +2303,13 @@ A0Active:
 	addlw	D'0'		    ; Attack 0
 	movwf	FSR0L
 	movfw	ADC_VALUE	    ; get the new value
+;	movwf	ATTACK_CV	    ; update _CV for use below
 	movwi	0[INDF0]	    ; update model value for this fader from W
 	
+A0CalcInc:	
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
-	subwf	ATTACK_CV, w
+	subwf	ADC_VALUE, w   ;  ATTACK_CV, w
 	btfss	BORROW
 	movlw	D'0'				; If value is <0, use minimum
 	; Get the new phase increment for the ATTACK stage
