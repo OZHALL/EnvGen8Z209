@@ -60,6 +60,7 @@
 ;2018-05-29 ozh - begin porting I2C support from the existing (working) C code
 ;		    see I2C1StatusCallback for I2C slave messages documentation
 ;2018-06-01 ozh - The I2C read seems to be working reliably
+;2018-06-10 ozh - Add support for remote control of LED ON/OFF  -  note: DIM LEDs not yet supported
 ;TODO:
 ;		  Next, lets get the "Write" coded.
 	
@@ -1158,6 +1159,7 @@ I2C1SWR:
 ;            slaveWriteType  = SLAVE_DATA_ADDRESS;
 	movlw	SLAVE_DATA_ADDRESS
 	movwf	slaveWriteType
+;	ignore the i2c_data ... it's just the address (0x68) logical left shifted (i.e. 0xD0)
 ;            break;
 	goto I2C1SCEXIT  
 ;
@@ -1170,10 +1172,12 @@ I2C1SWC:
 ;            {
 ;	only two cases here, so just do one branch
 	btfss slaveWriteType,0		; test bit 0 - Normal=0, Address=1
-	goto I2C1SWC_Normal
+	goto  I2C1SWC_Normal
+	clrf  slaveWriteType		; reset this back to SLAVE_DATA_NORMAL, till we get a fresh request
 ;                case SLAVE_DATA_ADDRESS:    //or pointer byte in our case
 ;                {
-I2C1SWC_Addr:                  
+I2C1SWC_Addr:  
+
 ;                    // this is a pointer byte with info on what to do next                    
 ;                    inPointerByte=I2C1_slaveWriteData;
 	movfw	I2C1_slaveWriteData
@@ -1250,6 +1254,8 @@ SWCNLEDChanged:
 ;                            iLEDBytesChangedCount++;
 	incf	iLEDBytesChangedCount,1	    ; 1 = results to file 
 ;                        }
+;	update the LEDS
+	call UpdateLEDs
 	goto	I2C1SWCExit
 ;                    }else{
 SWCNNotModeWriteLED:
@@ -1402,6 +1408,248 @@ MBFVContinue:
 	movf	TEMP_BSR_INTR,w
 	movwf	BSR
 	return
+
+;
+;   implement "remote control LEDs" based on working C code
+;
+;   inMSByteLED & inLSByteLED not "passed in".  Just refer to global variables
+;void UpdateLEDs(uint8_t inMSByteLED,uint8_t inLSByteLED){
+;    uint8_t wkByte;
+;    /* 
+;     LSB 0b00000011  Fader0 LED RB0
+;     LSB 0b00001100  Fader1 LED RB1
+;     LSB 0b00110000  Fader2 LED RB2
+;     LSB 0b11000000  Fader3 LED RB3
+;     */
+;    // note: this test harness is only changing 10 bits (only the bottom 2 of MSB)
+;    // parse the bits to make map to the PORTB/C & ODCONB/C
+; 
+;   ozh - first pass - just implement LED on/off
+#define LEDONBIT0 0
+#define LEDONBIT1 2
+#define LEDONBIT2 4
+#define LEDONBIT3 6	
+#define	LEDON0	0b00000001;
+#define	LEDON1	0b00000100;
+#define	LEDON2	0b00010000;
+#define	LEDON3	0b01000000;
+#define	LEDOFF0	0b11111110;
+#define	LEDOFF1	0b11111011;
+#define	LEDOFF2	0b11101111;
+#define	LEDOFF3	0b10111111;
+#define	LEDDIM0	0b00000010;
+#define	LEDDIM1	0b00001000;
+#define	LEDDIM2	0b00100000;
+#define	LEDDIM3	0b10000000;
+#define	LEDBRIGHT0 0b11111101;
+#define	LEDBRIGHT1 0b11110111;
+#define	LEDBRIGHT2 0b11011111;
+#define	LEDBRIGHT3 0b01111111;
+UpdateLEDs:
+	movlb	D'0'			; bank 0
+	movfw   LATB
+	movwf	TEMP_W_INTR		; build the new LATB value in a variable
+	movlb	D'3'			; back to bank 3 for xSByteLED variable
+
+;    // Now parse LSB
+;    wkByte=inLSByteLED;
+;    wkByte &= 0b00000010;   //LED 0
+;    if(0<wkByte)  // off/on bit
+;    {
+;        LATB |= 0b00000001;   // 
+;    }else{
+;        LATB &= 0b11111110;
+;    }
+	; LED0
+	bsf	TEMP_W_INTR,0		; set it on as a default
+	btfss	LSByteLED,LEDONBIT0	; ON bit on?
+	bcf	TEMP_W_INTR,0		; if not, turn LED off
+    
+;    wkByte=inLSByteLED;
+;    wkByte &= 0b00000001;
+;    if(0<wkByte)  // dim/bright bit
+;    {
+;        ODCONB &= 0b11111110;
+;    }else{
+;
+;        ODCONB |= 0b00000001; 
+;    }
+;   
+;    wkByte=inLSByteLED;
+;    wkByte &= 0b00001000;  // LED 1
+;    if(0<wkByte)  // off/on bit
+;    {
+;        LATB |= 0b00000010;   // 
+;    }else{
+;        LATB &= 0b11111101;
+;    }
+	; LED1
+	bsf	TEMP_W_INTR,1		; set it on as a default
+	btfss	LSByteLED,LEDONBIT1	; ON bit on?
+	bcf	TEMP_W_INTR,1		; if not, turn LED off
+;    wkByte=inLSByteLED;
+;    wkByte &= 0b00000100;
+;    if(0<wkByte)  // dim/bright bit
+;    {
+;        ODCONB &= 0b11111101;
+;    }else{
+;
+;        ODCONB |= 0b00000010;   // 
+;    }
+; 
+;    wkByte=inLSByteLED;
+;    wkByte &= 0b00100000;  // LED 2
+;    if(0<wkByte)  // off/on bit
+;    {
+;        LATB |= 0b00000100;   // 
+;    }else{
+;        LATB &= 0b11111011;
+;    }
+	; LED2
+	bsf	TEMP_W_INTR,2		; set it on as a default
+	btfss	LSByteLED,LEDONBIT2	; ON bit on?
+	bcf	TEMP_W_INTR,2		; if not, turn LED off
+;    wkByte=inLSByteLED;
+;    wkByte &= 0b00010000;
+;    if(0<wkByte)  // dim/bright bit
+;    {
+;        ODCONB &= 0b11111011;
+;    }else{
+;
+;        ODCONB |= 0b00000100;   // 
+;    }  
+;    
+;    wkByte=inLSByteLED;
+;    wkByte &= 0b10000000;  // LED 3
+;    if(0<wkByte)  // off/on bit
+;    {
+;        LATB |= 0b00001000;   // 
+;    }else{
+;        LATB &= 0b11110111;
+;    }
+	; LED3
+	bsf	TEMP_W_INTR,3		; set it on as a default
+	btfss	LSByteLED,LEDONBIT3	; ON bit on?
+	bcf	TEMP_W_INTR,3		; if not, turn LED off
+;    wkByte=inLSByteLED;
+;    wkByte &= 0b01000000;
+;    if(0<wkByte)  // dim/bright bit
+;    {
+;        ODCONB &= 0b11110111;
+;    }else{
+;
+;        ODCONB |= 0b00001000;   // 
+;    } 
+;    // Now parse MSB
+;    wkByte=inMSByteLED;
+;    wkByte &= 0b00000010;  // LED 4
+;    if(0<wkByte)  // off/on bit
+;    {
+;        LATB |= 0b00010000;   // 
+;    }else{
+;        LATB &= 0b11101111;
+;    }
+	; LED4
+	; now we have to look at MSByteLED
+	bsf	TEMP_W_INTR,4		; set it on as a default
+	btfss	MSByteLED,LEDONBIT0	; ON bit on?
+	bcf	TEMP_W_INTR,4		; if not, turn LED off
+
+;    wkByte=inMSByteLED;
+;    wkByte &= 0b00000001;
+;    if(0<wkByte)  // dim/bright bit
+;    {
+;        ODCONB &= 0b11101111;
+;    }else{
+;
+;        ODCONB |= 0b00010000;   // 
+;    } 
+;    
+;   at this point we're done with PORTB and ODCONB, update them
+	movlb	D'0'		    ; bank 0
+	; that's all on PORTB, do the update
+	movfw	TEMP_W_INTR
+	movwf	LATB
+	; TODO: ODCONB
+
+;   service last three LED on PORTC/ODCONC
+	movfw   LATC
+	movwf	TEMP_W_INTR		; build the new LATB value in a variable
+	movlb	D'3'			; back to bank 3 for xSByteLED variable
+
+;    wkByte=inMSByteLED;
+;    wkByte &= 0b00001000;  // LED 5
+;    if(0<wkByte)  // off/on bit
+;    {
+;        LATC |= 0b00100000;   // 
+;    }else{
+;        LATC &= 0b11011111;
+;    }
+	; LED5
+	bsf	TEMP_W_INTR,5		; set it on as a default
+	btfss	MSByteLED,LEDONBIT1	; ON bit on?
+	bcf	TEMP_W_INTR,5		; if not, turn LED off
+;    wkByte=inMSByteLED;
+;    wkByte &= 0b00000100;
+;    if(0<wkByte)  // dim/bright bit
+;    {
+;        ODCONC &= 0b11011111;
+;    }else{
+;
+;        ODCONC |= 0b00100000;   // 
+;    } 
+;        
+;    wkByte=inMSByteLED;
+;    wkByte &= 0b00100000;  // LED 6
+;    if(0<wkByte)  // off/on bit
+;    {
+;        LATC |= 0b01000000;   // 
+;    }else{
+;        LATC &= 0b10111111;
+;    }
+	; LED6
+	bsf	TEMP_W_INTR,6		; set it on as a default
+	btfss	MSByteLED,LEDONBIT2	; ON bit on?
+	bcf	TEMP_W_INTR,6		; if not, turn LED off	
+;    wkByte=inMSByteLED;
+;    wkByte &= 0b00010000;
+;    if(0<wkByte)  // dim/bright bit
+;    {
+;        ODCONC &= 0b10111111;
+;    }else{
+;
+;        ODCONC |= 0b01000000;   // 
+;    } 
+;    
+;    wkByte=inMSByteLED;
+;    wkByte &= 0b10000000;  // LED 7
+;    if(0<wkByte)  // off/on bit
+;    {
+;        LATC |= 0b10000000;   // 
+;    }else{
+;        LATC &= 0b01111111;
+;    }
+	; LED7
+	bsf	TEMP_W_INTR,7		; set it on as a default
+	btfss	MSByteLED,LEDONBIT3	; ON bit on?
+	bcf	TEMP_W_INTR,7		; if not, turn LED off	
+;    wkByte=inMSByteLED;
+;    wkByte &= 0b01000000;
+;    if(0<wkByte)  // dim/bright bit
+;    {
+;        ODCONC &= 0b01111111;
+;    }else{
+;
+;        ODCONC |= 0b10000000;   // 
+;    } 
+;}
+;   at this point we're done with PORTC and ODCONC, update them
+	movlb	D'0'		    ; bank 0
+	; that's all on PORTC, do the update
+	movfw	TEMP_W_INTR
+	movwf	LATC
+	; TODO: ODCONC
+    return
 ;------------------------------------------------------
 ;	10 bit x 10 bit Multiply Subroutine
 ; This is used by the Attack, Decay and Release stages to
@@ -1811,7 +2059,7 @@ Main:
 	; end test
 	call	PartyLights
 	call	PartyLights
-	call	PartyLights
+;	call	PartyLights
 	
 	clrf	OVERRUN_FLAG		;init this flag
 	
@@ -1947,6 +2195,8 @@ Main:
 	movlb	D'3'
 	movlw	0xFF		    ; set the takeover flags to 1 (active)
 	movwf	FaderTakeoverFlags
+	clrf	slaveWriteType	    ; init this static variable to SLAVE_DATA_NORMAL
+	clrf	faderNumber	    ; init to 0
 	movlb	D'0'
 ; now copy the 20 registers which define the operation of the EG0 to EG1 model
 
