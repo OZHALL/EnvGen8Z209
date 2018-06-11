@@ -63,7 +63,9 @@
 ;2018-06-10 ozh - Add support for remote control of LED ON/OFF  -  note: DIM LEDs not yet supported
 ;2018-06-10 ozh - The I2C write is working.  There is still more code to write (e.g. manage takeover).
 ;		* * * this is a major milestone * * *
-;TODO:	code the "takeover" logic
+;2018-06-10 ozh - takeover mode is largely done but not fully tested (successfully)
+	
+;TODO:	debug the "takeover" logic - map the takeover flags to the LEDs for debugging
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -1416,6 +1418,35 @@ MBFVContinue:
 	movwf	BSR
 	return
 
+; see if the ADC_VALUE is within a range of +/- 3 of the value in W
+; if so, set the takeover flag for the ADC_CHANNEL
+TestTakeover:
+	movwf	TEMP		    ; model value to be compared
+	addlw	D'3'		    ; model + takeover range
+	btfsc	CARRY
+	movlw	0xFF		    ; max value 0xFF
+	subwf	ADC_VALUE,w
+	btfsc	STATUS,C	    ; C = 0 so W > f (i.e. Model + range > fader), test some more
+	goto	TstTkOvrExit	    ; so exit
+	movlw	D'3'		    ; 
+	subwf	TEMP,w		    ; model - takeover range
+	btfss	BORROW
+	movlw	D'0'		    ; minimum of 0
+	subwf	ADC_VALUE,w
+	btfss	STATUS,C	    ; C = 0 so W > f (i.e. Model - range > fader)
+	goto	TstTkOvrExit	    ; so exit
+	;else flow thru & set the active flag
+SetActive:
+	movf	BSR,w			; this bank "preservation" while accessing PORTC works, it is expensive
+	movwf	TEMP_BSR_INTR
+	movlb	D'3'
+	bsf	FaderTakeoverFlags,ADC_CHANNEL
+	movf	TEMP_BSR_INTR,w	    	; restore BSR
+	movwf	BSR
+TstTkOvrExit:
+	movfw	TEMP		    ; restore W
+	return
+	
 ;
 ;   implement "remote control LEDs" based on working C code
 ;
@@ -2273,13 +2304,15 @@ ScannedAllChannels:
 Attack0CV:
 	movf	FADERACTIVE_FLAG,w		;load flag
 	bnz	A0Active
+
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'0'		    ; Attack 0
 	movwf	FSR0L
-	moviw	0[INDF0]	    ; get model value for this fader from W	
+	moviw	0[INDF0]	    ; get model value for this fader from W
+	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value
 	goto	A0CalcInc	    ; go to the continue code
 ;	now, decide if it should be activated
@@ -2331,7 +2364,8 @@ Attack1CV:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'4'		    ; Attack 1
 	movwf	FSR0L
-	moviw	0[INDF0]	    ; get model value for this fader from W	
+	moviw	0[INDF0]	    ; get model value for this fader from W
+	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value 
 	goto	A1CalcInc	    ; go to the continue code	
 ;	now, decide if it should be activated
@@ -2387,7 +2421,8 @@ Decay0CV:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'1'		    ; Decay 0
 	movwf	FSR0L
-	moviw	0[INDF0]	    ; get model value for this fader from W	
+	moviw	0[INDF0]	    ; get model value for this fader from W
+	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value  
 	goto	D0CalcInc
 ;	now, decide if it should be activated
@@ -2437,7 +2472,8 @@ Decay1CV:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'5'		    ; Decay 1
 	movwf	FSR0L
-	moviw	0[INDF0]	    ; get model value for this fader from W	
+	moviw	0[INDF0]	    ; get model value for this fader from W
+	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value  
 	goto	D1CalcInc
 ;	now, decide if it should be activated
@@ -2490,6 +2526,7 @@ Sustain0CV:
 	addlw	D'2'		    ; Sustain 0
 	movwf	FSR0L
 	moviw	0[INDF0]	    ; get model value for this fader from W	
+	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value  
 	goto	S0CalcInc
 ;	now, decide if it should be activated
@@ -2523,7 +2560,8 @@ Sustain1CV:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'6'		    ; Sustain 1
 	movwf	FSR0L
-	moviw	0[INDF0]	    ; get model value for this fader from W	
+	moviw	0[INDF0]	    ; get model value for this fader from W
+	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value 
 	goto	S1CalcInc
 ;	now, decide if it should be activated
@@ -2556,7 +2594,8 @@ Release0CV:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'3'		    ; Release 0
 	movwf	FSR0L
-	moviw	0[INDF0]	    ; get model value for this fader from W	
+	moviw	0[INDF0]	    ; get model value for this fader from W
+	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value  
 	goto	R0CalcInc
 ;	now, decide if it should be activated
@@ -2604,7 +2643,8 @@ Release1CV:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'7'		    ; Release 1
 	movwf	FSR0L
-	moviw	0[INDF0]	    ; get model value for this fader from W	
+	moviw	0[INDF0]	    ; get model value for this fader from W
+	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value    
 	goto	R0CalcInc
 ;	now, decide if it should be activated
