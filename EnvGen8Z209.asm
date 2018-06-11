@@ -64,8 +64,9 @@
 ;2018-06-10 ozh - The I2C write is working.  There is still more code to write (e.g. manage takeover).
 ;		* * * this is a major milestone * * *
 ;2018-06-10 ozh - takeover mode is largely done but not fully tested (successfully)
+;2018-06-11 ozh - takeover mode is more tested.  Added lights to indicate takeover had happenned.  Lights are a little flakey.
 	
-;TODO:	debug the "takeover" logic - map the takeover flags to the LEDs for debugging
+;TODO:	debug the "takeover" logic
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -267,6 +268,13 @@
 	MODEL_VALUE
 	FADERACTIVE_FLAG
   ENDC
+;   these are used only by Delay1Sec which is called by PartyLights before the main loop
+;   the bank does not really matter, as long as they are out of the way of other variables
+  CBLOCK 0x05D
+	TEMP_2
+	TEMP_3
+	TEMP64			    ; only used by TestTakeover
+  ENDC
   CBLOCK 0x060
 	;BYTE_FADER_VALUE[8]  
 	BYTE_FADER_VALUE			; 8 bytes for the 8 faders
@@ -342,22 +350,20 @@
 	FLAGS						; See Defines below
 	; The current A/D channel and value
 	ADC_CHANNEL	;0x72
-	ADC_VALUE
-
+	ADC_VALUE	;0x73
+	ADC_VAL64
 	; temp variables
-	WORK_HI		;0x78
+	WORK_HI		
 	WORK_LO
-	DAC_NUMBER	;0x7A
+	DAC_NUMBER	
 	LOOP_COUNTER
-	GIE_STATE	;0x7C
+	GIE_STATE	
 	OVERRUN_FLAG
 	;temp storage
-	TEMP_BSR	;0x7E
+	TEMP_BSR	
 	TEMP_BSR_INTR	;for use in Interrupt ONLY
 	TEMP_W_INTR
 	FAKE_PUNCH_EXPO
-	TEMP_2
-	TEMP_3
  ENDC
 
 ;-------------------------------------
@@ -1300,6 +1306,17 @@ SWCIncFaderChange:
 ;	this next line did now work properly.  for faderNumber=0 it changed FF to 7F
 ;	bcf	FaderTakeoverFlags,faderNumber	    ; this will only use first 3 bits of faderNumber
 	clrf	FaderTakeoverFlags		    ; we should be getting all 8 faders, so set them all
+	movfw	BSR
+	movwf	TEMP_BSR_INTR
+	movlb	D'0'
+	movfw	LATB
+	andlw	b'11100000'
+	movwf	LATB
+	movfw	LATC
+	andlw	b'00011111'
+	movwf	LATC	
+	movfw	TEMP_BSR_INTR
+	movwf	BSR
 	; TODO: only need to do ^^^ this once!
 ;                            }
 I2C1SWCIncFader:
@@ -1421,32 +1438,83 @@ MBFVContinue:
 ; see if the ADC_VALUE is within a range of +/- 3 of the value in W
 ; if so, set the takeover flag for the ADC_CHANNEL
 TestTakeover:
-	movwf	TEMP		    ; model value to be compared
-	addlw	D'3'		    ; model + takeover range
-	btfsc	CARRY
-	movlw	0xFF		    ; max value 0xFF
-	subwf	ADC_VALUE,w
-	btfsc	STATUS,C	    ; C = 0 so W > f (i.e. Model + range > fader), test some more
-	goto	TstTkOvrExit	    ; so exit
-	movlw	D'3'		    ; 
-	subwf	TEMP,w		    ; model - takeover range
-	btfss	BORROW
-	movlw	D'0'		    ; minimum of 0
-	subwf	ADC_VALUE,w
-	btfss	STATUS,C	    ; C = 0 so W > f (i.e. Model - range > fader)
-	goto	TstTkOvrExit	    ; so exit
-	;else flow thru & set the active flag
+	movwf	TEMP		    ; model value to be 
+	lsrf	WREG,w
+	lsrf	WREG,w
+	subwf	ADC_VAL64,w
+	bnz	TstTkOvrExit
 SetActive:
 	movf	BSR,w			; this bank "preservation" while accessing PORTC works, it is expensive
-	movwf	TEMP_BSR_INTR
-	movlb	D'3'
-	bsf	FaderTakeoverFlags,ADC_CHANNEL
-	movf	TEMP_BSR_INTR,w	    	; restore BSR
+	movwf	TEMP_BSR
+	call	SetTakeoverFlag
+	movf	TEMP_BSR,w	    	; restore BSR
 	movwf	BSR
 TstTkOvrExit:
 	movfw	TEMP		    ; restore W
 	return
-	
+; set the takeover flag based on the value of the ADC_CHANNEL
+SetTakeoverFlag:
+	movlb	D'3'
+	movfw	ADC_CHANNEL
+	brw				; Computed branch
+	goto	STF0
+	goto	STF1
+	goto	STF2
+	goto	STF3
+	goto	STF4
+	goto	STF5
+	goto	STF6
+	goto	STF7
+STF0:
+	;bit 0
+    	bsf	FaderTakeoverFlags,0	; set it
+	movlb	D'0'
+	bsf	LATB,0
+	goto	STFExit
+STF1:
+	;bit 1
+    	bsf	FaderTakeoverFlags,1	; set it
+	movlb	D'0'
+	bsf	LATB,1
+	goto	STFExit
+STF2:
+	;bit 2
+    	bsf	FaderTakeoverFlags,2	; set it
+	movlb	D'0'
+	bsf	LATB,2
+	goto	STFExit
+STF3:
+	;bit 3
+    	bsf	FaderTakeoverFlags,3	; set it
+	movlb	D'0'
+	bsf	LATB,3
+	goto	STFExit
+STF4:	
+	;bit 4
+    	bsf	FaderTakeoverFlags,4	; set it
+	movlb	D'0'
+	bsf	LATB,4
+	goto	STFExit
+STF5:
+	;bit 5
+    	bsf	FaderTakeoverFlags,5	; set it
+	movlb	D'0'
+	bsf	LATC,5
+	goto	STFExit
+STF6:
+	;bit 6
+    	bsf	FaderTakeoverFlags,6	; set it
+	movlb	D'0'
+	bsf	LATC,6
+	goto	STFExit
+STF7:
+	;bit 7
+    	bsf	FaderTakeoverFlags,7	; set it
+	movlb	D'0'
+	bsf	LATC,7
+	goto	STFExit
+STFExit:
+	return
 ;
 ;   implement "remote control LEDs" based on working C code
 ;
@@ -1926,6 +1994,10 @@ DoADConversion:
 	;  Read the ADC Value and store it
 	movf	ADRESH, w
 	movwf	ADC_VALUE
+	;   create a 64 bit resolution version for takeover comparison
+	movwf	ADC_VAL64
+	lsrf	ADC_VAL64,f	; TODO: would this be faster if I shifted in W and then stored?
+	lsrf	ADC_VAL64,f
 	movlb	D'0'				; Bank 0
 	return
 
@@ -2022,7 +2094,7 @@ Delay1Sec:
           movlw          0xFF
           movwf          TEMP
           movwf          TEMP_2
-          movlw          0x05	    ; this makes it 1 second @4MHz (but 8x faster at 32MHz!
+          movlw          0x05	    ; this makes it 1 second @4MHz (but 8x faster at 32MHz!)
 
           movwf          TEMP_3
           decfsz          TEMP,f
@@ -2233,6 +2305,13 @@ Main:
 	movlb	D'3'
 	movlw	0xFF		    ; set the takeover flags to 1 (active)
 	movwf	FaderTakeoverFlags
+;	test only!!! start with takeoverflags reset
+;	TODO: comment this out!!!
+	clrf	FaderTakeoverFlags
+	clrf	BYTE_FADER_VALUE
+	clrf	0x61
+	clrf	0x62
+;	end test	
 	clrf	slaveWriteType	    ; init this static variable to SLAVE_DATA_NORMAL
 	clrf	faderNumber	    ; init to 0
 	movlb	D'0'
@@ -2249,7 +2328,7 @@ Main:
 MainLoop:
 	movlb	D'0'				; Bank 0
 	; Change to next A/D channel
-	incf	ADC_CHANNEL, f
+	incf	ADC_CHANNEL,f
 	movf	ADC_CHANNEL,w
 	andlw	0x07
 	movwf	ADC_CHANNEL	    ; index is in ADC_CHANNEL
@@ -2263,6 +2342,7 @@ MainLoop:
 	
 	movlb	D'3'		    ; FaderTakeoverFlags in bank 3
 	movlw	D'0'
+	;TODO: this does NOT work as expected
 	btfsc	FaderTakeoverFlags,ADC_CHANNEL
 	movlw	D'1'
 	;WREG now has takeover (active) flag
@@ -2919,7 +2999,7 @@ Init_Osc:
 ;-------------------------------------------------------
 
 ; org     0x300					; Need to start at 0x100 boundary
- org     0x500					; Need to start at 0x100 boundary
+ org     0x600					; Need to start at 0x100 boundary
 ; these three tables are recreated (thx Tom W.) for a 22kHz vs 31.125kHz interrupt (sample) rate`
 ControlLookupHi:
 	dt	D'16', D'14', D'13', D'13', D'12', D'11', D'10', D'10'
@@ -3047,7 +3127,7 @@ ControlLookupLo:
 ; which makes life marginally simpler.
 ;------------------------------------------------------------------------------
 ; org     0x600					; Need to start at page boundary
- org     0x800					; Need to start at page boundary
+ org     0x900					; Need to start at page boundary
 AttackCurve:
 	dt	D'0', D'0', D'231', D'1', D'202', D'3', D'171', D'5'
 	dt	D'138', D'7', D'101', D'9', D'62', D'11', D'20', D'13'
@@ -3120,7 +3200,7 @@ AttackCurve:
 	dt	D'136', D'250', D'0', D'251', D'120', D'251', D'239', D'251'
 	dt	D'101', D'252', D'219', D'252', D'80', D'253', D'196', D'253'
 	dt	D'55', D'254', D'170', D'254', D'28', D'255', D'142', D'255'
- org     0xA00					; Need to start at page boundary
+ org     0xB00					; Need to start at page boundary
 	; One extra to make interp simple
 	dt	D'255', D'255'
 
