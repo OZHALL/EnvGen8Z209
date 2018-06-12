@@ -66,7 +66,8 @@
 ;2018-06-10 ozh - takeover mode is largely done but not fully tested (successfully)
 ;2018-06-11 ozh - takeover mode is more tested.  Added lights to indicate takeover had happenned.  Lights are a little flakey.
 ;2018-06-11 ozh - FADERACTIVE_FLAG set routine works now.
-
+;2018-06-12 ozh - The "DIM" functionality is almost there.  Still testing through this.
+	
 ;TODO:	rethink the way the LEDs work, based on the "turn on LED at takeover" logic
 	;performance performance performance
 	
@@ -120,7 +121,41 @@
 #define USEACCESSBANK	0x00 ;untested
 #define USEBSR		0x01 ;untested
 
-
+; for use with UpdateLEDs
+;   thes bit pairs (01, 23, 45, 67) represent an ON bit and a BRIGHT bit
+;   00	= LED off (BRIGHT n/a)
+;   01	= LED off (BRIGHT n/a)
+;   10	= LED on DIM (BRIGHT=0)
+;   11	= LED on BRIGHT (BRIGHT=1)
+#define LEDONBIT0 1
+#define LEDONBIT1 3
+#define LEDONBIT2 5
+#define LEDONBIT3 7
+#define LEDBRIGHTBIT0 0
+#define LEDBRIGHTBIT1 2
+#define LEDBRIGHTBIT2 4
+#define LEDBRIGHTBIT3 6
+ ;the following defines are untested, esp the "bright/dim"
+#define LEDALLONDIM b'10101010'
+#define LEDALLONBRIGHT 0xFF
+#define LEDALLOFF 0x00
+#define	LEDON0	b'00000010'
+#define	LEDON1	b'00001000'
+#define	LEDON2	b'00100000'
+#define	LEDON3	b'10000000'
+#define	LEDOFF0	b'11111100'
+#define	LEDOFF1	b'11110011'
+#define	LEDOFF2	b'11001111'
+#define	LEDOFF3	b'00111111'
+#define	LEDDIM0	b'00000001'
+#define	LEDDIM1	b'00000100'
+#define	LEDDIM2	b'00010000'
+#define	LEDDIM3	b'01000000'
+#define	LEDBRIGHT0 b'11111101'
+#define	LEDBRIGHT1 b'11110111'
+#define	LEDBRIGHT2 b'11011111'
+#define	LEDBRIGHT3 b'01111111'
+ 
 ;================================================================
 ; begin orig ENVGEN8 code
 ;================================================================
@@ -1305,19 +1340,15 @@ SWCIncFaderChange:
 	movwf	FSR1L
 	movfw	I2C1_slaveWriteData
 	movwi   0[INDF1]	    ; put the value to that location	
-;                                bFaderTakeoverFlag[faderNumber]=false;
-;	this next line did now work properly.  for faderNumber=0 it changed FF to 7F
-;	bcf	FaderTakeoverFlags,faderNumber	    ; this will only use first 3 bits of faderNumber
+;                                bFaderTakeoverFlag[faderNumber]=false
 	clrf	FaderTakeoverFlags		    ; we should be getting all 8 faders, so set them all
 	movfw	BSR
 	movwf	TEMP_BSR_INTR
-	movlb	D'0'
-	movfw	LATB
-	andlw	b'11100000'
-	movwf	LATB
-	movfw	LATC
-	andlw	b'00011111'
-	movwf	LATC	
+	movlb	D'3'
+	movlw	LEDALLONDIM
+	movfw	LSByteLED
+	movfw	MSByteLED
+	call	UpdateLEDs	    ; BSR will be D'0' on exit from this routine	
 	movfw	TEMP_BSR_INTR
 	movwf	BSR
 	; TODO: only need to do ^^^ this once!
@@ -1473,48 +1504,64 @@ STF0:
     	bsf	FaderTakeoverFlags,0	; set it
 	movlb	D'0'
 	bsf	LATB,0
+	movlb	D'30'
+	bcf	ODCONB,0
 	goto	STFExit
 STF1:
 	;bit 1
     	bsf	FaderTakeoverFlags,1	; set it
 	movlb	D'0'
 	bsf	LATB,1
+	movlb	D'30'
+	bcf	ODCONB,1
 	goto	STFExit
 STF2:
 	;bit 2
     	bsf	FaderTakeoverFlags,2	; set it
 	movlb	D'0'
 	bsf	LATB,2
+	movlb	D'30'
+	bcf	ODCONB,2
 	goto	STFExit
 STF3:
 	;bit 3
     	bsf	FaderTakeoverFlags,3	; set it
 	movlb	D'0'
 	bsf	LATB,3
+	movlb	D'30'
+	bcf	ODCONB,3
 	goto	STFExit
 STF4:	
 	;bit 4
     	bsf	FaderTakeoverFlags,4	; set it
 	movlb	D'0'
 	bsf	LATB,4
+	movlb	D'30'
+	bcf	ODCONB,4
 	goto	STFExit
 STF5:
 	;bit 5
     	bsf	FaderTakeoverFlags,5	; set it
 	movlb	D'0'
 	bsf	LATC,5
+	movlb	D'30'
+	bcf	ODCONC,5
 	goto	STFExit
 STF6:
 	;bit 6
     	bsf	FaderTakeoverFlags,6	; set it
 	movlb	D'0'
 	bsf	LATC,6
+	movlb	D'30'
+	bcf	ODCONC,6
 	goto	STFExit
 STF7:
 	;bit 7
     	bsf	FaderTakeoverFlags,7	; set it
 	movlb	D'0'
 	bsf	LATC,7
+	movlb	D'30'
+	bcf	ODCONC,7
 	goto	STFExit
 STFExit:
 	return
@@ -1533,35 +1580,12 @@ STFExit:
 ;    // note: this test harness is only changing 10 bits (only the bottom 2 of MSB)
 ;    // parse the bits to make map to the PORTB/C & ODCONB/C
 ; 
-;   ozh - first pass - just implement LED on/off
-#define LEDONBIT0 0
-#define LEDONBIT1 2
-#define LEDONBIT2 4
-#define LEDONBIT3 6
-#define LEDDIMBIT0 1
-#define LEDDIMBIT1 3
-#define LEDDIMBIT2 5
-#define LEDDIMBIT3 7
-#define	LEDON0	0b00000001;
-#define	LEDON1	0b00000100;
-#define	LEDON2	0b00010000;
-#define	LEDON3	0b01000000;
-#define	LEDOFF0	0b11111110;
-#define	LEDOFF1	0b11111011;
-#define	LEDOFF2	0b11101111;
-#define	LEDOFF3	0b10111111;
-#define	LEDDIM0	0b00000010;
-#define	LEDDIM1	0b00001000;
-#define	LEDDIM2	0b00100000;
-#define	LEDDIM3	0b10000000;
-#define	LEDBRIGHT0 0b11111101;
-#define	LEDBRIGHT1 0b11110111;
-#define	LEDBRIGHT2 0b11011111;
-#define	LEDBRIGHT3 0b01111111;
+
 UpdateLEDs:
 	movlb	D'0'			; bank 0
-	movfw   LATB
+	movfw   ODCONC
 	movwf	TEMP_W_INTR		; build the new LATB value in a variable
+	movlb	D'30'
 	movfw	ODCONB
 	movwf	TEMP_INTR		; build the new ODCONB value in a variable
 	movlb	D'3'			; back to bank 3 for xSByteLED variable
@@ -1589,9 +1613,9 @@ UpdateLEDs:
 ;
 ;        ODCONB |= 0b00000001; 
 ;    }
-	bsf	TEMP_INTR,0		; set it on as a default
-	btfss	LSByteLED,LEDDIMBIT0	; DIM bit on?
-	bcf	TEMP_INTR,0		; if not, turn LED off
+	bsf	TEMP_INTR,0		; set it DIM as a default (open drain set = DIM when LED is 'off')
+	btfsc	LSByteLED,LEDBRIGHTBIT0	; BRIGHT bit on? 
+	bcf	TEMP_INTR,0		; if not, turn OD off
 ;    wkByte=inLSByteLED;
 ;    wkByte &= 0b00001000;  // LED 1
 ;    if(0<wkByte)  // off/on bit
@@ -1613,9 +1637,9 @@ UpdateLEDs:
 ;
 ;        ODCONB |= 0b00000010;   // 
 ;    }
-	bsf	TEMP_INTR,1		; set it on as a default
-	btfss	LSByteLED,LEDDIMBIT1	; DIM bit on?
-	bcf	TEMP_INTR,1		; if not, turn LED off 
+	bsf	TEMP_INTR,1		; set it DIM as a default
+	btfsc	LSByteLED,LEDBRIGHTBIT1	; BRIGHT bit on? 
+	bcf	TEMP_INTR,1		; if not, turn OD off 
 ;    wkByte=inLSByteLED;
 ;    wkByte &= 0b00100000;  // LED 2
 ;    if(0<wkByte)  // off/on bit
@@ -1637,9 +1661,9 @@ UpdateLEDs:
 ;
 ;        ODCONB |= 0b00000100;   // 
 ;    }  
-	bsf	TEMP_INTR,2		; set it on as a default
-	btfss	LSByteLED,LEDDIMBIT2	; DIM bit on?
-	bcf	TEMP_INTR,2		; if not, turn LED off    
+	bsf	TEMP_INTR,2		; set it DIM as a default
+	btfsc	LSByteLED,LEDBRIGHTBIT2	; BRIGHT bit on?
+	bcf	TEMP_INTR,2		; if not, turn OD off    
 ;    wkByte=inLSByteLED;
 ;    wkByte &= 0b10000000;  // LED 3
 ;    if(0<wkByte)  // off/on bit
@@ -1661,9 +1685,9 @@ UpdateLEDs:
 ;
 ;        ODCONB |= 0b00001000;   // 
 ;    } 
-	bsf	TEMP_INTR,3		; set it on as a default
-	btfss	LSByteLED,LEDDIMBIT3	; DIM bit on?
-	bcf	TEMP_INTR,3		; if not, turn LED off   
+	bsf	TEMP_INTR,3		; set it DIM as a default
+	btfsc	LSByteLED,LEDBRIGHTBIT3	; BRIGHT bit on?
+	bcf	TEMP_INTR,3		; if not, turn OD off   
 ;    // Now parse MSB
 ;    wkByte=inMSByteLED;
 ;    wkByte &= 0b00000010;  // LED 4
@@ -1688,9 +1712,9 @@ UpdateLEDs:
 ;
 ;        ODCONB |= 0b00010000;   // 
 ;    } 
-	bsf	TEMP_INTR,4		; set it on as a default
-	btfss	MSByteLED,LEDDIMBIT0	; DIM bit on?
-	bcf	TEMP_INTR,4		; if not, turn LED off 
+	bsf	TEMP_INTR,4		; set it DIM as a default
+	btfsc	MSByteLED,LEDBRIGHTBIT0	; BRIGHT bit on?
+	bcf	TEMP_INTR,4		; if not, turn OD off 
 	
 ;   at this point we're done with PORTB and ODCONB, update them
 	movlb	D'0'		    ; bank 0
@@ -1698,12 +1722,15 @@ UpdateLEDs:
 	movfw	TEMP_W_INTR
 	movwf	LATB
 	; ODCONB
+	movlb	D'30'
 	movfw	TEMP_INTR
 	movwf	ODCONB
 
-;   service last three LED on PORTC/ODCONC
+;   service last three LEDs on PORTC/ODCONC
+	movlb	D'0'
 	movfw   LATC
 	movwf	TEMP_W_INTR		; build the new LATC value in a variable
+	movlb	D'30'
 	movfw	ODCONC
 	movwf	TEMP_INTR		; build the new ODCONC value in a variable
 	
@@ -1730,9 +1757,9 @@ UpdateLEDs:
 ;
 ;        ODCONC |= 0b00100000;   // 
 ;    } 
-	bsf	TEMP_INTR,5		; set it on as a default
-	btfss	MSByteLED,LEDDIMBIT0	; DIM bit on?
-	bcf	TEMP_INTR,5		; if not, turn LED off         
+	bsf	TEMP_INTR,5		; set it DIM as a default
+	btfsc	MSByteLED,LEDBRIGHTBIT1	; BRIGHT bit on?
+	bcf	TEMP_INTR,5		; if not, turn OD off         
 ;    wkByte=inMSByteLED;
 ;    wkByte &= 0b00100000;  // LED 6
 ;    if(0<wkByte)  // off/on bit
@@ -1754,9 +1781,9 @@ UpdateLEDs:
 ;
 ;        ODCONC |= 0b01000000;   // 
 ;    } 
-	bsf	TEMP_INTR,6		; set it on as a default
-	btfss	MSByteLED,LEDDIMBIT2	; DIM bit on?
-	bcf	TEMP_INTR,6		; if not, turn LED off      
+	bsf	TEMP_INTR,6		; set it DIM as a default
+	btfsc	MSByteLED,LEDBRIGHTBIT2	; BRIGHT bit on?
+	bcf	TEMP_INTR,6		; if not, turn OD off      
 ;    wkByte=inMSByteLED;
 ;    wkByte &= 0b10000000;  // LED 7
 ;    if(0<wkByte)  // off/on bit
@@ -1778,9 +1805,9 @@ UpdateLEDs:
 ;
 ;        ODCONC |= 0b10000000;   // 
 ;    } 
-	bsf	TEMP_INTR,7		; set it on as a default
-	btfss	MSByteLED,LEDDIMBIT3	; DIM bit on?
-	bcf	TEMP_INTR,7		; if not, turn LED off  
+	bsf	TEMP_INTR,7		; set it DIM as a default
+	btfsc	MSByteLED,LEDBRIGHTBIT3	; BRIGHT bit on?
+	bcf	TEMP_INTR,7		; if not, turn OD off  
 ;}
 ;   at this point we're done with PORTC and ODCONC, update them
 	movlb	D'0'		    ; bank 0
@@ -1788,8 +1815,10 @@ UpdateLEDs:
 	movfw	TEMP_W_INTR
 	movwf	LATC
 	; ODCONC
+	movlb	D'30'
 	movfw	TEMP_INTR
 	movwf	ODCONC
+	movlb	D'0'
     return
 ;------------------------------------------------------
 ;	10 bit x 10 bit Multiply Subroutine
@@ -2140,6 +2169,24 @@ Delay1Sec:
           goto          $-5
           return
 ; end Delay1Sec
+; test what happens when we iterate through all values of LSByteLED
+TestLights:
+	movlb	D'3'
+	movlw	b'00000011'
+	movwf	LSByteLED
+	clrf	LSByteLED	    ; use this to init 'incf' version
+TLloop:
+	call	UpdateLEDs
+;	call	Delay1Sec
+	movlb	D'3'
+;	lslf	LSByteLED,f
+   	incf	LSByteLED,f	    ; this will count up - taking 255/8 seconds
+	bnz	TLloop
+	movlb	D'30'
+	clrf	ODCONB
+	clrf	ODCONC
+	movlb	D'0'
+	return
 ; do a chase on the Fader LEDS (PORTB bits 0-4, PORTC bits 5-7)	  
 PartyLights:
 	movlw	0x01	;start with the lowest one
@@ -2203,8 +2250,15 @@ Main:
 	nop
 	; end test
 	call	PartyLights
+;	call	TestLights
 	call	PartyLights
 ;	call	PartyLights
+	movlb	D'3'
+	movlw	LEDALLONBRIGHT
+	movfw	LSByteLED
+	movfw	MSByteLED
+	call	UpdateLEDs
+	movlb	D'0'				; Bank 0
 	
 	clrf	OVERRUN_FLAG		;init this flag
 	
@@ -2340,6 +2394,11 @@ Main:
 	movlb	D'3'
 	movlw	0xFF		    ; set the takeover flags to 1 (active)
 	movwf	FaderTakeoverFlags
+	
+	movlw	LEDALLONDIM
+	movfw	LSByteLED
+	movfw	MSByteLED
+	call	UpdateLEDs
 ;	test only!!! start with takeoverflags reset
 ;	TODO: comment this out!!!
 ;	clrf	FaderTakeoverFlags
