@@ -65,8 +65,10 @@
 ;		* * * this is a major milestone * * *
 ;2018-06-10 ozh - takeover mode is largely done but not fully tested (successfully)
 ;2018-06-11 ozh - takeover mode is more tested.  Added lights to indicate takeover had happenned.  Lights are a little flakey.
-	
-;TODO:	debug the "takeover" logic
+;2018-06-11 ozh - FADERACTIVE_FLAG set routine works now.
+
+;TODO:	rethink the way the LEDs work, based on the "turn on LED at takeover" logic
+	;performance performance performance
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -362,6 +364,7 @@
 	;temp storage
 	TEMP_BSR	
 	TEMP_BSR_INTR	;for use in Interrupt ONLY
+	TEMP_INTR
 	TEMP_W_INTR
 	FAKE_PUNCH_EXPO
  ENDC
@@ -1534,7 +1537,11 @@ STFExit:
 #define LEDONBIT0 0
 #define LEDONBIT1 2
 #define LEDONBIT2 4
-#define LEDONBIT3 6	
+#define LEDONBIT3 6
+#define LEDDIMBIT0 1
+#define LEDDIMBIT1 3
+#define LEDDIMBIT2 5
+#define LEDDIMBIT3 7
 #define	LEDON0	0b00000001;
 #define	LEDON1	0b00000100;
 #define	LEDON2	0b00010000;
@@ -1555,6 +1562,8 @@ UpdateLEDs:
 	movlb	D'0'			; bank 0
 	movfw   LATB
 	movwf	TEMP_W_INTR		; build the new LATB value in a variable
+	movfw	ODCONB
+	movwf	TEMP_INTR		; build the new ODCONB value in a variable
 	movlb	D'3'			; back to bank 3 for xSByteLED variable
 
 ;    // Now parse LSB
@@ -1580,7 +1589,9 @@ UpdateLEDs:
 ;
 ;        ODCONB |= 0b00000001; 
 ;    }
-;   
+	bsf	TEMP_INTR,0		; set it on as a default
+	btfss	LSByteLED,LEDDIMBIT0	; DIM bit on?
+	bcf	TEMP_INTR,0		; if not, turn LED off
 ;    wkByte=inLSByteLED;
 ;    wkByte &= 0b00001000;  // LED 1
 ;    if(0<wkByte)  // off/on bit
@@ -1602,7 +1613,9 @@ UpdateLEDs:
 ;
 ;        ODCONB |= 0b00000010;   // 
 ;    }
-; 
+	bsf	TEMP_INTR,1		; set it on as a default
+	btfss	LSByteLED,LEDDIMBIT1	; DIM bit on?
+	bcf	TEMP_INTR,1		; if not, turn LED off 
 ;    wkByte=inLSByteLED;
 ;    wkByte &= 0b00100000;  // LED 2
 ;    if(0<wkByte)  // off/on bit
@@ -1624,7 +1637,9 @@ UpdateLEDs:
 ;
 ;        ODCONB |= 0b00000100;   // 
 ;    }  
-;    
+	bsf	TEMP_INTR,2		; set it on as a default
+	btfss	LSByteLED,LEDDIMBIT2	; DIM bit on?
+	bcf	TEMP_INTR,2		; if not, turn LED off    
 ;    wkByte=inLSByteLED;
 ;    wkByte &= 0b10000000;  // LED 3
 ;    if(0<wkByte)  // off/on bit
@@ -1646,6 +1661,9 @@ UpdateLEDs:
 ;
 ;        ODCONB |= 0b00001000;   // 
 ;    } 
+	bsf	TEMP_INTR,3		; set it on as a default
+	btfss	LSByteLED,LEDDIMBIT3	; DIM bit on?
+	bcf	TEMP_INTR,3		; if not, turn LED off   
 ;    // Now parse MSB
 ;    wkByte=inMSByteLED;
 ;    wkByte &= 0b00000010;  // LED 4
@@ -1670,17 +1688,25 @@ UpdateLEDs:
 ;
 ;        ODCONB |= 0b00010000;   // 
 ;    } 
-;    
+	bsf	TEMP_INTR,4		; set it on as a default
+	btfss	MSByteLED,LEDDIMBIT0	; DIM bit on?
+	bcf	TEMP_INTR,4		; if not, turn LED off 
+	
 ;   at this point we're done with PORTB and ODCONB, update them
 	movlb	D'0'		    ; bank 0
 	; that's all on PORTB, do the update
 	movfw	TEMP_W_INTR
 	movwf	LATB
-	; TODO: ODCONB
+	; ODCONB
+	movfw	TEMP_INTR
+	movwf	ODCONB
 
 ;   service last three LED on PORTC/ODCONC
 	movfw   LATC
-	movwf	TEMP_W_INTR		; build the new LATB value in a variable
+	movwf	TEMP_W_INTR		; build the new LATC value in a variable
+	movfw	ODCONC
+	movwf	TEMP_INTR		; build the new ODCONC value in a variable
+	
 	movlb	D'3'			; back to bank 3 for xSByteLED variable
 
 ;    wkByte=inMSByteLED;
@@ -1704,7 +1730,9 @@ UpdateLEDs:
 ;
 ;        ODCONC |= 0b00100000;   // 
 ;    } 
-;        
+	bsf	TEMP_INTR,5		; set it on as a default
+	btfss	MSByteLED,LEDDIMBIT0	; DIM bit on?
+	bcf	TEMP_INTR,5		; if not, turn LED off         
 ;    wkByte=inMSByteLED;
 ;    wkByte &= 0b00100000;  // LED 6
 ;    if(0<wkByte)  // off/on bit
@@ -1726,7 +1754,9 @@ UpdateLEDs:
 ;
 ;        ODCONC |= 0b01000000;   // 
 ;    } 
-;    
+	bsf	TEMP_INTR,6		; set it on as a default
+	btfss	MSByteLED,LEDDIMBIT2	; DIM bit on?
+	bcf	TEMP_INTR,6		; if not, turn LED off      
 ;    wkByte=inMSByteLED;
 ;    wkByte &= 0b10000000;  // LED 7
 ;    if(0<wkByte)  // off/on bit
@@ -1748,13 +1778,18 @@ UpdateLEDs:
 ;
 ;        ODCONC |= 0b10000000;   // 
 ;    } 
+	bsf	TEMP_INTR,7		; set it on as a default
+	btfss	MSByteLED,LEDDIMBIT3	; DIM bit on?
+	bcf	TEMP_INTR,7		; if not, turn LED off  
 ;}
 ;   at this point we're done with PORTC and ODCONC, update them
 	movlb	D'0'		    ; bank 0
 	; that's all on PORTC, do the update
 	movfw	TEMP_W_INTR
 	movwf	LATC
-	; TODO: ODCONC
+	; ODCONC
+	movfw	TEMP_INTR
+	movwf	ODCONC
     return
 ;------------------------------------------------------
 ;	10 bit x 10 bit Multiply Subroutine
@@ -2307,7 +2342,7 @@ Main:
 	movwf	FaderTakeoverFlags
 ;	test only!!! start with takeoverflags reset
 ;	TODO: comment this out!!!
-	clrf	FaderTakeoverFlags
+;	clrf	FaderTakeoverFlags
 	clrf	BYTE_FADER_VALUE
 	clrf	0x61
 	clrf	0x62
@@ -2332,24 +2367,64 @@ MainLoop:
 	movf	ADC_CHANNEL,w
 	andlw	0x07
 	movwf	ADC_CHANNEL	    ; index is in ADC_CHANNEL
-;	get model value
-;	clrf	FSR0H		    ; bank 0 for model
-;	movlw	#BYTE_FADER_VALUE   ; model array
-;	addwf	ADC_CHANNEL,0	    ; set up index
-;	movwf	FSR0L
-;	moviw	0[INDF0]	    ; model value for this fader is in W
-;	movwf	MODEL_VALUE	    ; model value is in MODEL_VALUE
-	
+
+;   "Arbiter" code to be sure that a "write" from Master (the programmer - e.g. MatrixSwitch)
+;	is not instantly replaced by the next fader read.   Fader must "take over"	
 	movlb	D'3'		    ; FaderTakeoverFlags in bank 3
+	movfw	ADC_CHANNEL
+	brw
+	goto	FTOF0
+	goto	FTOF1
+	goto	FTOF2
+	goto	FTOF3
+	goto	FTOF4
+	goto	FTOF5
+	goto	FTOF6
+	goto	FTOF7
+FTOF0:
 	movlw	D'0'
-	;TODO: this does NOT work as expected
-	btfsc	FaderTakeoverFlags,ADC_CHANNEL
+	btfsc	FaderTakeoverFlags,0
 	movlw	D'1'
+	goto	FTOFExit
+FTOF1:
+	movlw	D'0'
+	btfsc	FaderTakeoverFlags,1
+	movlw	D'1'
+	goto	FTOFExit
+FTOF2:
+	movlw	D'0'
+	btfsc	FaderTakeoverFlags,2
+	movlw	D'1'
+	goto	FTOFExit
+FTOF3:
+	movlw	D'0'
+	btfsc	FaderTakeoverFlags,3
+	movlw	D'1'
+	goto	FTOFExit
+FTOF4:
+	movlw	D'0'
+	btfsc	FaderTakeoverFlags,4
+	movlw	D'1'
+	goto	FTOFExit
+FTOF5:
+	movlw	D'0'
+	btfsc	FaderTakeoverFlags,5
+	movlw	D'1'
+	goto	FTOFExit
+FTOF6:
+	movlw	D'0'
+	btfsc	FaderTakeoverFlags,6
+	movlw	D'1'
+	goto	FTOFExit
+FTOF7:
+	movlw	D'0'
+	btfsc	FaderTakeoverFlags,7
+	movlw	D'1'
+;	goto	FTOFExit
+FTOFExit:  
 	;WREG now has takeover (active) flag
 	movlb	D'0'
 	movwf	FADERACTIVE_FLAG
-;   "Arbiter" code to be sure that a "write" from Master (the programmer - e.g. MatrixSwitch)
-;	is not instantly replaced by the next fader read.   Fader must "take over"
 	
 ; We need to do different things depending on which value we're reading:
 
