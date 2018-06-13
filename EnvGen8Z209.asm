@@ -67,9 +67,9 @@
 ;2018-06-11 ozh - takeover mode is more tested.  Added lights to indicate takeover had happenned.  Lights are a little flakey.
 ;2018-06-11 ozh - FADERACTIVE_FLAG set routine works now.
 ;2018-06-12 ozh - The "DIM" functionality is almost there.  Still testing through this.
+;2018-06-12 ozh - I believe the LED management is working now.	
 	
-;TODO:	rethink the way the LEDs work, based on the "turn on LED at takeover" logic
-	;performance performance performance
+;TODO:	performance performance performance - the EGs are snappy, but the fader updates can be very delayed.
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -1346,8 +1346,8 @@ SWCIncFaderChange:
 	movwf	TEMP_BSR_INTR
 	movlb	D'3'
 	movlw	LEDALLONDIM
-	movfw	LSByteLED
-	movfw	MSByteLED
+	movwf	LSByteLED
+	movwf	MSByteLED
 	call	UpdateLEDs	    ; BSR will be D'0' on exit from this routine	
 	movfw	TEMP_BSR_INTR
 	movwf	BSR
@@ -1583,7 +1583,7 @@ STFExit:
 
 UpdateLEDs:
 	movlb	D'0'			; bank 0
-	movfw   ODCONC
+	movfw   LATB
 	movwf	TEMP_W_INTR		; build the new LATB value in a variable
 	movlb	D'30'
 	movfw	ODCONB
@@ -2173,11 +2173,11 @@ Delay1Sec:
 TestLights:
 	movlb	D'3'
 	movlw	b'00000011'
-	movwf	LSByteLED
+;	movwf	LSByteLED
 	clrf	LSByteLED	    ; use this to init 'incf' version
 TLloop:
 	call	UpdateLEDs
-;	call	Delay1Sec
+	call	Delay1Sec
 	movlb	D'3'
 ;	lslf	LSByteLED,f
    	incf	LSByteLED,f	    ; this will count up - taking 255/8 seconds
@@ -2244,10 +2244,10 @@ Main:
 	call Init_Osc
 	call Init_Ports
 	;Test ONLY Z209 code
-	bcf	GATE_LED0
-	nop	; this seems to be required!!! ozh
-	bcf	GATE_LED1
-	nop
+;	bcf	GATE_LED0
+;	nop	; this seems to be required!!! ozh
+;	bcf	GATE_LED1
+;	nop
 	; end test
 	call	PartyLights
 ;	call	TestLights
@@ -2255,11 +2255,10 @@ Main:
 ;	call	PartyLights
 	movlb	D'3'
 	movlw	LEDALLONBRIGHT
-	movfw	LSByteLED
-	movfw	MSByteLED
+	movwf	LSByteLED
+	movwf	MSByteLED
 	call	UpdateLEDs
 	movlb	D'0'				; Bank 0
-	
 	clrf	OVERRUN_FLAG		;init this flag
 	
 	; Set up the interrupts (INTCON is a SFR available all banks)
@@ -2387,21 +2386,19 @@ Main:
 	; Set up the GATE & TRIGGER debounce
 	clrf	DEBOUNCE_HI
 	clrf	DEBOUNCE_LO
-	clrf	STATES
+	movlw	b'00000011'			; init these to high, because my gate harware is reversed
+	movwf	STATES
 	clrf	CHANGES
-
-	bcf	LEDLAST		    ; begin w/the last LED off - see CheckOverrun
+; moot cuz we are setting to dim below
+;	bcf	LEDLAST		    ; begin w/the last LED off - see CheckOverrun
 	movlb	D'3'
 	movlw	0xFF		    ; set the takeover flags to 1 (active)
 	movwf	FaderTakeoverFlags
 	
-	movlw	LEDALLONDIM
-	movfw	LSByteLED
-	movfw	MSByteLED
+	movlw	LEDALLONBRIGHT
+	movwf	LSByteLED
+	movwf	MSByteLED
 	call	UpdateLEDs
-;	test only!!! start with takeoverflags reset
-;	TODO: comment this out!!!
-;	clrf	FaderTakeoverFlags
 	clrf	BYTE_FADER_VALUE
 	clrf	0x61
 	clrf	0x62
