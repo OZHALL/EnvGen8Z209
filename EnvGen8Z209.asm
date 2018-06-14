@@ -2426,61 +2426,61 @@ MainLoop:
 
 ;   "Arbiter" code to be sure that a "write" from Master (the programmer - e.g. MatrixSwitch)
 ;	is not instantly replaced by the next fader read.   Fader must "take over"	
-	movlb	D'3'		    ; FaderTakeoverFlags in bank 3
-	movfw	ADC_CHANNEL
-	brw
-	goto	FTOF0
-	goto	FTOF1
-	goto	FTOF2
-	goto	FTOF3
-	goto	FTOF4
-	goto	FTOF5
-	goto	FTOF6
-	goto	FTOF7
-FTOF0:
-	movlw	D'0'
-	btfsc	FaderTakeoverFlags,0
-	movlw	D'1'
-	goto	FTOFExit
-FTOF1:
-	movlw	D'0'
-	btfsc	FaderTakeoverFlags,1
-	movlw	D'1'
-	goto	FTOFExit
-FTOF2:
-	movlw	D'0'
-	btfsc	FaderTakeoverFlags,2
-	movlw	D'1'
-	goto	FTOFExit
-FTOF3:
-	movlw	D'0'
-	btfsc	FaderTakeoverFlags,3
-	movlw	D'1'
-	goto	FTOFExit
-FTOF4:
-	movlw	D'0'
-	btfsc	FaderTakeoverFlags,4
-	movlw	D'1'
-	goto	FTOFExit
-FTOF5:
-	movlw	D'0'
-	btfsc	FaderTakeoverFlags,5
-	movlw	D'1'
-	goto	FTOFExit
-FTOF6:
-	movlw	D'0'
-	btfsc	FaderTakeoverFlags,6
-	movlw	D'1'
-	goto	FTOFExit
-FTOF7:
-	movlw	D'0'
-	btfsc	FaderTakeoverFlags,7
-	movlw	D'1'
+;	movlb	D'3'		    ; FaderTakeoverFlags in bank 3
+;	movfw	ADC_CHANNEL
+;	brw
+;	goto	FTOF0
+;	goto	FTOF1
+;	goto	FTOF2
+;	goto	FTOF3
+;	goto	FTOF4
+;	goto	FTOF5
+;	goto	FTOF6
+;	goto	FTOF7
+;FTOF0:
+;	movlw	D'0'
+;	btfsc	FaderTakeoverFlags,0
+;	movlw	D'1'
 ;	goto	FTOFExit
-FTOFExit:  
-	;WREG now has takeover (active) flag
-	movlb	D'0'
-	movwf	FADERACTIVE_FLAG
+;FTOF1:
+;	movlw	D'0'
+;	btfsc	FaderTakeoverFlags,1
+;	movlw	D'1'
+;	goto	FTOFExit
+;FTOF2:
+;	movlw	D'0'
+;	btfsc	FaderTakeoverFlags,2
+;	movlw	D'1'
+;	goto	FTOFExit
+;FTOF3:
+;	movlw	D'0'
+;	btfsc	FaderTakeoverFlags,3
+;	movlw	D'1'
+;	goto	FTOFExit
+;FTOF4:
+;	movlw	D'0'
+;	btfsc	FaderTakeoverFlags,4
+;	movlw	D'1'
+;	goto	FTOFExit
+;FTOF5:
+;	movlw	D'0'
+;	btfsc	FaderTakeoverFlags,5
+;	movlw	D'1'
+;	goto	FTOFExit
+;FTOF6:
+;	movlw	D'0'
+;	btfsc	FaderTakeoverFlags,6
+;	movlw	D'1'
+;	goto	FTOFExit
+;FTOF7:
+;	movlw	D'0'
+;	btfsc	FaderTakeoverFlags,7
+;	movlw	D'1'
+;;	goto	FTOFExit
+;FTOFExit:  
+;	;WREG now has takeover (active) flag
+;	movlb	D'0'
+;	movwf	FADERACTIVE_FLAG
 	
 ; We need to do different things depending on which value we're reading:
 
@@ -2513,9 +2513,12 @@ ScannedAllChannels:
 
 ; Update the Attack CV
 Attack0CV:
-	movf	FADERACTIVE_FLAG,w		;load flag
-	bnz	A0Active
-
+;	movf	FADERACTIVE_FLAG,w		;load flag
+;	bnz	A0Active
+	movlb	D'3'
+	btfsc	FaderTakeoverFlags,0		;see if fader is active
+	goto	A0Active
+	movlb	D'0'
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
 	clrf	FSR0H		    ; bank 0 for model
@@ -2533,11 +2536,7 @@ Attack0CV:
 ;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
 A0Active: 
-	;end test
-;	movlb	D'3'
-;	bcf	FaderTakeoverFlags,ADC_CHANNEL	;reset active flag
-;	movlb	D'0'
-	;end test
+	movlb	D'0'
 ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
@@ -2567,8 +2566,13 @@ A0CalcInc:
 	goto	MainLoop
 
 Attack1CV:
-	movf	FADERACTIVE_FLAG,w		;load flag
-	bnz	A1Active
+;	movf	FADERACTIVE_FLAG,w		;load flag
+;	bnz	A1Active
+	movlb	D'3'
+	btfsc	FaderTakeoverFlags,4		;see if fader is active
+	goto	A1Active
+	movlb	D'0'
+	
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
 	clrf	FSR0H		    ; bank 0 for model
@@ -2586,6 +2590,7 @@ Attack1CV:
 ;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
 A1Active:
+	movlb	D'0'
     ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
@@ -2621,11 +2626,16 @@ A1CalcInc:
 Decay0CV:
 ;	movlw	D'1'		; ANA1
 ;	call	DoADConversion
-	movf	ADC_VALUE,w			; put the value in the expected place
-	movwf	DECAY_CV
+;	movf	ADC_VALUE,w			; put the value in the expected place
+;	movwf	DECAY_CV
 	
-	movf	FADERACTIVE_FLAG,w		;load flag
-	bnz	D0Active
+;	movf	FADERACTIVE_FLAG,w		;load flag
+;	bnz	D0Active
+	movlb	D'3'
+	btfsc	FaderTakeoverFlags,1		;see if fader is active
+	goto	D0Active
+	movlb	D'0'
+	
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
 	clrf	FSR0H		    ; bank 0 for model
@@ -2643,6 +2653,7 @@ Decay0CV:
 ;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
 D0Active:
+	movlb	D'0'
 ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
@@ -2675,8 +2686,13 @@ Decay1CV:
 ;	movlw	D'5'		; ANA5
 ;	call	DoADConversion
 	
-	movf	FADERACTIVE_FLAG,w		;load flag
-	bnz	D1Active
+;	movf	FADERACTIVE_FLAG,w		;load flag
+;	bnz	D1Active
+	movlb	D'3'
+	btfsc	FaderTakeoverFlags,5		;see if fader is active
+	goto	D1Active
+	movlb	D'0'
+	
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
 	clrf	FSR0H		    ; bank 0 for model
@@ -2687,13 +2703,8 @@ Decay1CV:
 	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value  
 	goto	D1CalcInc
-;	now, decide if it should be activated
-	;if not ...
-;	goto	MainLoop
-	;else
-;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
-	;and flow thru to the fader active code
 D1Active:
+	movlb	D'0'
 ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
@@ -2725,11 +2736,13 @@ D1CalcInc:
 	
 ; Update the Sustain CV
 Sustain0CV:
-;	movlw	D'2'		; ANA2
-;	call	DoADConversion
+;	movf	FADERACTIVE_FLAG,w		;load flag
+;	bnz	S0Active
+	movlb	D'3'
+	btfsc	FaderTakeoverFlags,2		;see if fader is active
+	goto	S0Active
+	movlb	D'0'
 	
-	movf	FADERACTIVE_FLAG,w		;load flag
-	bnz	S0Active
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
 	clrf	FSR0H		    ; bank 0 for model
@@ -2747,6 +2760,7 @@ Sustain0CV:
 ;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
 S0Active:
+	movlb	D'0'
 ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
@@ -2763,8 +2777,13 @@ S0CalcInc:
 Sustain1CV:
 ;	movlw	D'6'		; ANA6
 ;	call	DoADConversion
-	movf	FADERACTIVE_FLAG,w		;load flag
-	bnz	S1Active
+;	movf	FADERACTIVE_FLAG,w		;load flag
+;	bnz	S1Active
+	movlb	D'3'
+	btfsc	FaderTakeoverFlags,6		;see if fader is active
+	goto	S1Active
+	movlb	D'0'
+	
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
 	clrf	FSR0H		    ; bank 0 for model
@@ -2782,6 +2801,7 @@ Sustain1CV:
 ;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
 	;and flow thru to the fader active code
 S1Active:
+	movlb	D'0'		    ; TODO: probably don't need to set this
 ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
@@ -2797,8 +2817,13 @@ S1CalcInc:
 	
 ; Update the Release CV
 Release0CV:
-	movf	FADERACTIVE_FLAG,w		;load flag
-	bnz	R0Active
+;	movf	FADERACTIVE_FLAG,w		;load flag
+;	bnz	R0Active
+	movlb	D'3'
+	btfsc	FaderTakeoverFlags,3		;see if fader is active
+	goto	R0Active
+	movlb	D'0'
+	
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
 	clrf	FSR0H		    ; bank 0 for model
@@ -2809,13 +2834,8 @@ Release0CV:
 	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value  
 	goto	R0CalcInc
-;	now, decide if it should be activated
-	;if not ...
-;	goto	MainLoop
-	;else
-;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
-	;and flow thru to the fader active code
 R0Active:
+	movlb	D'0'
 ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
@@ -2824,7 +2844,7 @@ R0Active:
 	movfw	ADC_VALUE	    ; get the new value
 	movwi	0[INDF0]	    ; update model value for this fader from W
 
-R0CalcInc:	
+R0CalcInc:
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
 	subwf	ADC_VALUE, w
@@ -2846,8 +2866,13 @@ R0CalcInc:
 
 ; Update the Release CV
 Release1CV: 
-	movf	FADERACTIVE_FLAG,w		;load flag
-	bnz	R1Active
+;	movf	FADERACTIVE_FLAG,w		;load flag
+;	bnz	R1Active
+	movlb	D'3'
+	btfsc	FaderTakeoverFlags,7		;see if fader is active
+	goto	R1Active
+	movlb	D'0'
+	
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
 	clrf	FSR0H		    ; bank 0 for model
@@ -2858,13 +2883,8 @@ Release1CV:
 	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value    
 	goto	R0CalcInc
-;	now, decide if it should be activated
-	;if not ...
-;	goto	MainLoop
-	;else
-;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
-	;and flow thru to the fader active code
 R1Active:
+	movlb	D'0'		    ;TODO probably don't need this!
 ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
