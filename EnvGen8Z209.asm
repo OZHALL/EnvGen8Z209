@@ -68,9 +68,10 @@
 ;2018-06-11 ozh - FADERACTIVE_FLAG set routine works now.
 ;2018-06-12 ozh - The "DIM" functionality is almost there.  Still testing through this.
 ;2018-06-12 ozh - I believe the LED management is working now.	
+;2018-06-15 ozh - a couple of performance tweaks.  Also, tested/calibrated "punch"
 	
-;TODO:	performance performance performance - the EGs are snappy, but the fader updates can be very delayed.
-	
+;TODO:	performance - the EGs are snappy, but the fader updates can be very delayed.
+;   * * * NOTE * * *  we still have a +0.5v offset.  Need to update hardware test to drive output level from a fader.	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -303,7 +304,8 @@
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
 
 	MODEL_VALUE
-	FADERACTIVE_FLAG
+	FADERACTIVE_FLAG	
+	OVERRUN_FLAG
   ENDC
 ;   these are used only by Delay1Sec which is called by PartyLights before the main loop
 ;   the bank does not really matter, as long as they are out of the way of other variables
@@ -390,12 +392,12 @@
 	ADC_VALUE	;0x73
 	ADC_VAL64
 	FaderTakeoverFlags
+	FaderFirstTimeFlags
 	; temp variables
 	WORK_HI		
 	WORK_LO
 	DAC_NUMBER
 	GIE_STATE	
-	OVERRUN_FLAG
 	;temp storage
 	TEMP_BSR	
 	TEMP_BSR_INTR	;for use in Interrupt ONLY
@@ -713,10 +715,11 @@ NextStage:
 TestPunch:
 ; Do we use the Punch stage?
 ;	Z209 - hard code Punch usage
+;   leave this code uncommented out.  Make adjustments Main ... see FAKE_PUNCH_EXPO
 ;	comment out the next line to hardcode punch (i.e. goto TestLooping)
-;	or the next TWO lines so skip punch
-;	btfss	USE_ADSR		; Standard ADSR, so skip Punch
-;	goto	TestLooping
+;	or the next TWO lines to skip punch
+	btfss	USE_ADSR		; Standard ADSR, so skip Punch
+	goto	TestLooping;
 SkipPunch:
 	; Are we on the Punch stage?
 	movf	STAGE, w		; We're about to examine what STAGE we're on
@@ -1339,19 +1342,24 @@ SWCIncFaderChange:
 	addwf	faderNumber,0	    ; get the index to the array - result in W
 	movwf	FSR1L
 	movfw	I2C1_slaveWriteData
-	movwi   0[INDF1]	    ; put the value to that location	
+	movwi   0[INDF1]	    ; put the value to that location
+;   only do the following code once for the 8 bytes
+	movf	faderNumber,w
+	bnz	I2C1SWCIncFader
 ;                                bFaderTakeoverFlag[faderNumber]=false
 	clrf	FaderTakeoverFlags		    ; we should be getting all 8 faders, so set them all
+
 	movfw	BSR
 	movwf	TEMP_BSR_INTR
 	movlb	D'3'
+	movlw	0xFF
+	movwf	FaderFirstTimeFlags
 	movlw	LEDALLONDIM
 	movwf	LSByteLED
 	movwf	MSByteLED
 	call	UpdateLEDs	    ; BSR will be D'0' on exit from this routine	
 	movfw	TEMP_BSR_INTR
 	movwf	BSR
-	; TODO: only need to do ^^^ this once!
 ;                            }
 I2C1SWCIncFader:
 ;                            faderNumber++;
@@ -1472,7 +1480,7 @@ MBFVContinue:
 ; see if the ADC_VALUE is within a range of +/- 3 of the value in W
 ; if so, set the takeover flag for the ADC_CHANNEL
 TestTakeover:
-	movwf	TEMP		    ; model value to be 
+	movwf	TEMP		    ; model value to be compared
 	lsrf	WREG,w
 	lsrf	WREG,w
 	subwf	ADC_VAL64,w
@@ -2363,15 +2371,18 @@ Main:
 	clrf	RELEASE_INC_HI
 
 	; Set up the Punch increment (fixed stage length of about 5msecs)
-	movlw	D'160'
+	; Note: this is based on the sample time, which has changed from 32kHz to 20kHz
+;	movlw	D'160'
+	movlw	D'100'		; we need to increase for slower sample rate Verification: values adjusted to be c. 5ms of hold
 	movwf	PUNCH_INC_LO
 	movwf	PUNCH_INC_MID
-	movlw	D'1'
+;	movlw	D'1'
+	movlw	D'2'
 	movwf	PUNCH_INC_HI
 	
 	; set up punch & expo as hardcoded values.  See defines USE_ADSR and USE_EXPO
-;	movlw	0x28			; punch 1, expo 1 = 0010 1000 = 0x28
-	movlw	0x08			; punch 0, expo 1 = 0000 1000 = 0x08
+;	movlw	0x28			; normal ADSR 1, expo 1 = 0010 1000 = 0x28
+	movlw	0x08			;       punch 0, expo 1 = 0000 1000 = 0x08
 	movwf	FAKE_PUNCH_EXPO		;use this variable instead of PORTA bits 3 (expo) & 5 (punch)
 	
 	; Clear the output buffers
@@ -2394,6 +2405,7 @@ Main:
 	movlb	D'3'
 	movlw	0xFF		    ; set the takeover flags to 1 (active)
 	movwf	FaderTakeoverFlags
+	clrf	FaderFirstTimeFlags
 	
 	movlw	LEDALLONBRIGHT
 	movwf	LSByteLED
@@ -2513,12 +2525,8 @@ ScannedAllChannels:
 
 ; Update the Attack CV
 Attack0CV:
-;	movf	FADERACTIVE_FLAG,w		;load flag
-;	bnz	A0Active
-;	movlb	D'3'
 	btfsc	FaderTakeoverFlags,0		;see if fader is active
 	goto	A0Active
-;	movlb	D'0'
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
 	clrf	FSR0H		    ; bank 0 for model
@@ -2528,13 +2536,13 @@ Attack0CV:
 	moviw	0[INDF0]	    ; get model value for this fader from W
 	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value
+	btfss	FaderFirstTimeFlags,0 ;see if first time since I2C
+	goto	MainLoop		; if not, just loop
+;	if this is the first time since we received new data via I2C, simulate a fader value change
+;	i.e. update the INC value
+A0FirstTime:
+	bcf	FaderFirstTimeFlags,0 ; clear the flag
 	goto	A0CalcInc	    ; go to the continue code
-;	now, decide if it should be activated
-	;if not ...
-;	goto	MainLoop
-	;else
-;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
-	;and flow thru to the fader active code
 A0Active: 
 ;	movlb	D'0'
 ;	update model from fader
@@ -2566,12 +2574,8 @@ A0CalcInc:
 	goto	MainLoop
 
 Attack1CV:
-;	movf	FADERACTIVE_FLAG,w		;load flag
-;	bnz	A1Active
-;	movlb	D'3'
 	btfsc	FaderTakeoverFlags,4		;see if fader is active
 	goto	A1Active
-;	movlb	D'0'
 	
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
@@ -2582,15 +2586,14 @@ Attack1CV:
 	moviw	0[INDF0]	    ; get model value for this fader from W
 	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value 
-	goto	A1CalcInc	    ; go to the continue code	
-;	now, decide if it should be activated
-	;if not ...
-;	goto	MainLoop			; for now, do nothing if fader not active
-	;else
-;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
-	;and flow thru to the fader active code
+	btfss	FaderFirstTimeFlags,4 ;see if first time since I2C
+	goto	MainLoop		; if not, just loop
+;	if this is the first time since we received new data via I2C, simulate a fader value change
+;	i.e. update the INC value
+A1FirstTime:
+	bcf	FaderFirstTimeFlags,4 ; clear the flag
+	goto	A1CalcInc	    ; go to the continue code
 A1Active:
-;	movlb	D'0'
     ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
@@ -2624,18 +2627,9 @@ A1CalcInc:
 	
 ; Update the Decay CV
 Decay0CV:
-;	movlw	D'1'		; ANA1
-;	call	DoADConversion
-;	movf	ADC_VALUE,w			; put the value in the expected place
-;	movwf	DECAY_CV
-	
-;	movf	FADERACTIVE_FLAG,w		;load flag
-;	bnz	D0Active
-;	movlb	D'3'
 	btfsc	FaderTakeoverFlags,1		;see if fader is active
-;	goto	D0Active
-	movlb	D'0'
-	
+	goto	D0Active
+
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
 	clrf	FSR0H		    ; bank 0 for model
@@ -2645,15 +2639,14 @@ Decay0CV:
 	moviw	0[INDF0]	    ; get model value for this fader from W
 	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value  
-	goto	D0CalcInc
-;	now, decide if it should be activated
-	;if not ...
-;	goto	MainLoop
-	;else
-;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
-	;and flow thru to the fader active code
+	btfss	FaderFirstTimeFlags,1 ;see if first time since I2C
+	goto	MainLoop		; if not, just loop
+;	if this is the first time since we received new data via I2C, simulate a fader value change
+;	i.e. update the INC value
+D0FirstTime:
+	bcf	FaderFirstTimeFlags,1 ; clear the flag
+	goto	D0CalcInc	    ; go to the continue code
 D0Active:
-;	movlb	D'0'
 ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
@@ -2682,17 +2675,10 @@ D0CalcInc:
 	movwf	DECAY_INC_LO
 	goto	MainLoop
 
-Decay1CV:	
-;	movlw	D'5'		; ANA5
-;	call	DoADConversion
-	
-;	movf	FADERACTIVE_FLAG,w		;load flag
-;	bnz	D1Active
-;	movlb	D'3'
+Decay1CV:
 	btfsc	FaderTakeoverFlags,5		;see if fader is active
 	goto	D1Active
-;	movlb	D'0'
-	
+
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
 	clrf	FSR0H		    ; bank 0 for model
@@ -2702,9 +2688,14 @@ Decay1CV:
 	moviw	0[INDF0]	    ; get model value for this fader from W
 	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value  
-	goto	D1CalcInc
+	btfss	FaderFirstTimeFlags,5 ;see if first time since I2C
+	goto	MainLoop		; if not, just loop
+;	if this is the first time since we received new data via I2C, simulate a fader value change
+;	i.e. update the INC value
+D1FirstTime:
+	bcf	FaderFirstTimeFlags,5 ; clear the flag
+	goto	D1CalcInc	    ; go to the continue code
 D1Active:
-;	movlb	D'0'
 ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
@@ -2736,12 +2727,8 @@ D1CalcInc:
 	
 ; Update the Sustain CV
 Sustain0CV:
-;	movf	FADERACTIVE_FLAG,w		;load flag
-;	bnz	S0Active
-;	movlb	D'3'
 	btfsc	FaderTakeoverFlags,2		;see if fader is active
 	goto	S0Active
-;	movlb	D'0'
 	
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
@@ -2752,15 +2739,14 @@ Sustain0CV:
 	moviw	0[INDF0]	    ; get model value for this fader from W	
 	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value  
-	goto	S0CalcInc
-;	now, decide if it should be activated
-	;if not ...
-;	goto	MainLoop
-	;else
-;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
-	;and flow thru to the fader active code
+	btfss	FaderFirstTimeFlags,2 ;see if first time since I2C
+	goto	MainLoop		; if not, just loop
+;	if this is the first time since we received new data via I2C, simulate a fader value change
+;	i.e. update the INC value
+S0FirstTime:
+	bcf	FaderFirstTimeFlags,2 ; clear the flag
+	goto	S0CalcInc	    ; go to the continue code
 S0Active:
-;	movlb	D'0'
 ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
@@ -2775,14 +2761,8 @@ S0CalcInc:
 
 ; Update the Sustain CV
 Sustain1CV:
-;	movlw	D'6'		; ANA6
-;	call	DoADConversion
-;	movf	FADERACTIVE_FLAG,w		;load flag
-;	bnz	S1Active
-;	movlb	D'3'
 	btfsc	FaderTakeoverFlags,6		;see if fader is active
 	goto	S1Active
-;	movlb	D'0'
 	
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
@@ -2793,13 +2773,13 @@ Sustain1CV:
 	moviw	0[INDF0]	    ; get model value for this fader from W
 	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value 
-	goto	S1CalcInc
-;	now, decide if it should be activated
-	;if not ...
-;	goto	MainLoop
-	;else
-;	bsf	FADERACTIVE_FLAG,ADC_CHANNEL	;set active flag
-	;and flow thru to the fader active code
+	btfss	FaderFirstTimeFlags,6 ;see if first time since I2C
+	goto	MainLoop		; if not, just loop
+;	if this is the first time since we received new data via I2C, simulate a fader value change
+;	i.e. update the INC value
+S1FirstTime:
+	bcf	FaderFirstTimeFlags,6 ; clear the flag
+	goto	S1CalcInc	    ; go to the continue code
 S1Active:
 ;	movlb	D'0'		    ; TODO: probably don't need to set this
 ;	update model from fader
@@ -2817,12 +2797,8 @@ S1CalcInc:
 	
 ; Update the Release CV
 Release0CV:
-;	movf	FADERACTIVE_FLAG,w		;load flag
-;	bnz	R0Active
-;	movlb	D'3'
 	btfsc	FaderTakeoverFlags,3		;see if fader is active
 	goto	R0Active
-;	movlb	D'0'
 	
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
@@ -2833,7 +2809,13 @@ Release0CV:
 	moviw	0[INDF0]	    ; get model value for this fader from W
 	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value  
-	goto	R0CalcInc
+	btfss	FaderFirstTimeFlags,3 ;see if first time since I2C
+	goto	MainLoop		; if not, just loop
+;	if this is the first time since we received new data via I2C, simulate a fader value change
+;	i.e. update the INC value
+R0FirstTime:
+	bcf	FaderFirstTimeFlags,3 ; clear the flag
+	goto	R0CalcInc	    ; go to the continue code
 R0Active:
 ;	movlb	D'0'
 ;	update model from fader
@@ -2866,12 +2848,8 @@ R0CalcInc:
 
 ; Update the Release CV
 Release1CV: 
-;	movf	FADERACTIVE_FLAG,w		;load flag
-;	bnz	R1Active
-;	movlb	D'3'
 	btfsc	FaderTakeoverFlags,7		;see if fader is active
 	goto	R1Active
-;	movlb	D'0'
 	
 ;	flag is zero, the fader is not active. 
 ;	TODO: make this more selective ( i.e. don't update if no change from prev )
@@ -2882,9 +2860,14 @@ Release1CV:
 	moviw	0[INDF0]	    ; get model value for this fader from W
 	call	TestTakeover	    ; FaderTakeoverFlags is set, if appropriate. BSR and W are preserved
 	movwf	ADC_VALUE	    ; update the new value    
-	goto	R0CalcInc
+	btfss	FaderFirstTimeFlags,7 ;see if first time since I2C
+	goto	MainLoop		; if not, just loop
+;	if this is the first time since we received new data via I2C, simulate a fader value change
+;	i.e. update the INC value
+R1FirstTime:
+	bcf	FaderFirstTimeFlags,7 ; clear the flag
+	goto	R1CalcInc	    ; go to the continue code
 R1Active:
-;	movlb	D'0'		    ;TODO probably don't need this!
 ;	update model from fader
 	clrf	FSR0H		    ; bank 0 for model
 	movlw	#BYTE_FADER_VALUE   ; model array
