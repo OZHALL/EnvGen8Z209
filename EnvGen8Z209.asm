@@ -69,8 +69,9 @@
 ;2018-06-12 ozh - The "DIM" functionality is almost there.  Still testing through this.
 ;2018-06-12 ozh - I believe the LED management is working now.	
 ;2018-06-15 ozh - a couple of performance tweaks.  Also, tested/calibrated "punch"
+;2018-06-16 ozh - tidy up code & comments
 	
-;TODO:	performance - the EGs are snappy, but the fader updates can be very delayed.
+;TODO:	performance - the EGs are snappy, but the fader updates can be delayed.
 ;   * * * NOTE * * *  we still have a +0.5v offset.  Need to update hardware test to drive output level from a fader.	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -529,7 +530,7 @@ ILContinue:	;process EG0 or EG1
 	xorwf	DEBOUNCE_HI, f		; HI+ = HI XOR LO
 	comf	DEBOUNCE_LO, f		; LO+ = ~LO
 	; See if any changes occured
-	movf	BSR,w			; this bank "preservation" while accessing PORTC works, it is expensive
+	movf	BSR,w			; this bank "preservation" while accessing PORTC works, but uses 6 cycles
 	movwf	TEMP_BSR_INTR
 	movlb	D'0' ; Bank 0
 	movfw	PORTC				; Get current data from GATE & TRIG inputs
@@ -972,13 +973,13 @@ DACOutput:
 
 	;clrc	don't need it	    ; clear carry flag = 0 
 	lsrf	WORK_HI, f  ; move lsb into carry
-	rrf	WORK_LO, f  ; move cary into msb and lsb into carry	
-	lsrf	WORK_HI, f  ; move lsb into carry
-	rrf	WORK_LO, f  ; move cary into msb and lsb int
-	lsrf	WORK_HI, f  ; move lsb into carry
-	rrf	WORK_LO, f  ; move cary into msb and lsb int
-	lsrf	WORK_HI, f  ; move lsb into carry
-	rrf	WORK_LO, f  ; move cary into msb and lsb int
+	rrf	WORK_LO, f  ; move carry into msb and lsb into carry	
+	lsrf	WORK_HI, f  
+	rrf	WORK_LO, f  
+	lsrf	WORK_HI, f  
+	rrf	WORK_LO, f  
+	lsrf	WORK_HI, f  
+	rrf	WORK_LO, f  
 
 ;	movlw DAC0	; TODO: change this hardcoded DAC0 to a variable
 ;        ; pass in the DAC # (in bit 7) via 
@@ -1036,8 +1037,6 @@ InterruptExit:
 	goto	IntLoop
 FinishedEG1:
 	movlb	D'0'				; Bank 0
-;   force an overrun
-;	call Delay25us
 	; second toggle for the CheckOverrun
 	movlw	BIT0
 	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
@@ -1418,66 +1417,67 @@ I2C1SCEXIT:
 	
 ;   Routine to marshall the data from the ATTACK_CV (D/S/R) variables into BYTE_FADER_VALUE[faderNumber]
 ;
-;TODO:   rework this once we are using BYTE_FADER_VALUE[] as the model
+; this has been reworked since we are using BYTE_FADER_VALUE[] as the model
 ;
-MarshallByteFaderValue:
-	movf	BSR,w			; this bank "preservation" while accessing PORTC works, it is expensive
-	movwf	TEMP_BSR_INTR
-	movlb	D'3'			; faderNumber is in bank 3
-	movfw	faderNumber
-	movlb	D'0'	    ; adjust bank for ADSR2
-	brw
-	goto	Attack1
-	goto	Decay1
-	goto	Sustain1
-	goto	Release1
-	goto	Attack2
-	goto	Decay2
-	goto	Sustain2
-	goto	Release2
-Attack1:
-	movfw	ATTACK_CV
-	goto	MBFVContinue
-Decay1:
-	movfw	DECAY_CV
-	goto	MBFVContinue
-Sustain1:
-	movfw	SUSTAIN_CV
-	goto	MBFVContinue
-Release1:
-	movfw	RELEASE_CV
-	goto	MBFVContinue
-Attack2:
-	movlb	D'2'
-	movfw	ATTACK_CV
-	goto	MBFVContinue
-Decay2:
-    	movlb	D'2'
-	movfw	DECAY_CV
-	goto	MBFVContinue
-Sustain2:
-    	movlb	D'2'
-	movfw	SUSTAIN_CV
-	goto	MBFVContinue
-Release2:
-    	movlb	D'2'
-	movfw	RELEASE_CV
-	goto	MBFVContinue
-MBFVContinue:
-	movlb	D'3'		    ; back to bank 3
-	movwf	TEMP_W_INTR
-	clrf    FSR1H		    ; bank 0
-	movlw   #BYTE_FADER_VALUE   ; 
-	addwf	faderNumber,0	    ; get the index to the array - result in W
-	movwf	FSR1L
-	movfw	TEMP_W_INTR
-	movwi   0[INDF1]	    ; put the value to that location 
-	; restore BSR
-	movf	TEMP_BSR_INTR,w
-	movwf	BSR
-	return
+; works, but unused
+;MarshallByteFaderValue:
+;	movf	BSR,w			; this bank "preservation" while accessing PORTC works, it is expensive
+;	movwf	TEMP_BSR_INTR
+;	movlb	D'3'			; faderNumber is in bank 3
+;	movfw	faderNumber
+;	movlb	D'0'	    ; adjust bank for ADSR2
+;	brw
+;	goto	Attack1
+;	goto	Decay1
+;	goto	Sustain1
+;	goto	Release1
+;	goto	Attack2
+;	goto	Decay2
+;	goto	Sustain2
+;	goto	Release2
+;Attack1:
+;	movfw	ATTACK_CV
+;	goto	MBFVContinue
+;Decay1:
+;	movfw	DECAY_CV
+;	goto	MBFVContinue
+;Sustain1:
+;	movfw	SUSTAIN_CV
+;	goto	MBFVContinue
+;Release1:
+;	movfw	RELEASE_CV
+;	goto	MBFVContinue
+;Attack2:
+;	movlb	D'2'
+;	movfw	ATTACK_CV
+;	goto	MBFVContinue
+;Decay2:
+;    	movlb	D'2'
+;	movfw	DECAY_CV
+;	goto	MBFVContinue
+;Sustain2:
+;    	movlb	D'2'
+;	movfw	SUSTAIN_CV
+;	goto	MBFVContinue
+;Release2:
+;    	movlb	D'2'
+;	movfw	RELEASE_CV
+;	goto	MBFVContinue
+;MBFVContinue:
+;	movlb	D'3'		    ; back to bank 3
+;	movwf	TEMP_W_INTR
+;	clrf    FSR1H		    ; bank 0
+;	movlw   #BYTE_FADER_VALUE   ; 
+;	addwf	faderNumber,0	    ; get the index to the array - result in W
+;	movwf	FSR1L
+;	movfw	TEMP_W_INTR
+;	movwi   0[INDF1]	    ; put the value to that location 
+;	; restore BSR
+;	movf	TEMP_BSR_INTR,w
+;	movwf	BSR
+;	return
 
-; see if the ADC_VALUE is within a range of +/- 3 of the value in W
+; see if the ADC_VALUE is within range.  Divide each value by 4 & if equal, takeover 
 ; if so, set the takeover flag for the ADC_CHANNEL
 TestTakeover:
 	movwf	TEMP		    ; model value to be compared
@@ -1599,127 +1599,48 @@ UpdateLEDs:
 	movlb	D'3'			; back to bank 3 for xSByteLED variable
 
 ;    // Now parse LSB
-;    wkByte=inLSByteLED;
-;    wkByte &= 0b00000010;   //LED 0
-;    if(0<wkByte)  // off/on bit
-;    {
-;        LATB |= 0b00000001;   // 
-;    }else{
-;        LATB &= 0b11111110;
-;    }
 	; LED0
 	bsf	TEMP_W_INTR,0		; set it on as a default
 	btfss	LSByteLED,LEDONBIT0	; ON bit on?
 	bcf	TEMP_W_INTR,0		; if not, turn LED off
     
-;    wkByte=inLSByteLED;
-;    wkByte &= 0b00000001;
-;    if(0<wkByte)  // dim/bright bit
-;    {
-;        ODCONB &= 0b11111110;
-;    }else{
-;
-;        ODCONB |= 0b00000001; 
-;    }
 	bsf	TEMP_INTR,0		; set it DIM as a default (open drain set = DIM when LED is 'off')
 	btfsc	LSByteLED,LEDBRIGHTBIT0	; BRIGHT bit on? 
 	bcf	TEMP_INTR,0		; if not, turn OD off
-;    wkByte=inLSByteLED;
-;    wkByte &= 0b00001000;  // LED 1
-;    if(0<wkByte)  // off/on bit
-;    {
-;        LATB |= 0b00000010;   // 
-;    }else{
-;        LATB &= 0b11111101;
-;    }
+	
 	; LED1
 	bsf	TEMP_W_INTR,1		; set it on as a default
 	btfss	LSByteLED,LEDONBIT1	; ON bit on?
 	bcf	TEMP_W_INTR,1		; if not, turn LED off
-;    wkByte=inLSByteLED;
-;    wkByte &= 0b00000100;
-;    if(0<wkByte)  // dim/bright bit
-;    {
-;        ODCONB &= 0b11111101;
-;    }else{
-;
-;        ODCONB |= 0b00000010;   // 
-;    }
+
 	bsf	TEMP_INTR,1		; set it DIM as a default
 	btfsc	LSByteLED,LEDBRIGHTBIT1	; BRIGHT bit on? 
 	bcf	TEMP_INTR,1		; if not, turn OD off 
-;    wkByte=inLSByteLED;
-;    wkByte &= 0b00100000;  // LED 2
-;    if(0<wkByte)  // off/on bit
-;    {
-;        LATB |= 0b00000100;   // 
-;    }else{
-;        LATB &= 0b11111011;
-;    }
+
 	; LED2
 	bsf	TEMP_W_INTR,2		; set it on as a default
 	btfss	LSByteLED,LEDONBIT2	; ON bit on?
 	bcf	TEMP_W_INTR,2		; if not, turn LED off
-;    wkByte=inLSByteLED;
-;    wkByte &= 0b00010000;
-;    if(0<wkByte)  // dim/bright bit
-;    {
-;        ODCONB &= 0b11111011;
-;    }else{
-;
-;        ODCONB |= 0b00000100;   // 
-;    }  
+ 
 	bsf	TEMP_INTR,2		; set it DIM as a default
 	btfsc	LSByteLED,LEDBRIGHTBIT2	; BRIGHT bit on?
 	bcf	TEMP_INTR,2		; if not, turn OD off    
-;    wkByte=inLSByteLED;
-;    wkByte &= 0b10000000;  // LED 3
-;    if(0<wkByte)  // off/on bit
-;    {
-;        LATB |= 0b00001000;   // 
-;    }else{
-;        LATB &= 0b11110111;
-;    }
+
 	; LED3
 	bsf	TEMP_W_INTR,3		; set it on as a default
 	btfss	LSByteLED,LEDONBIT3	; ON bit on?
 	bcf	TEMP_W_INTR,3		; if not, turn LED off
-;    wkByte=inLSByteLED;
-;    wkByte &= 0b01000000;
-;    if(0<wkByte)  // dim/bright bit
-;    {
-;        ODCONB &= 0b11110111;
-;    }else{
-;
-;        ODCONB |= 0b00001000;   // 
-;    } 
+
 	bsf	TEMP_INTR,3		; set it DIM as a default
 	btfsc	LSByteLED,LEDBRIGHTBIT3	; BRIGHT bit on?
 	bcf	TEMP_INTR,3		; if not, turn OD off   
 ;    // Now parse MSB
-;    wkByte=inMSByteLED;
-;    wkByte &= 0b00000010;  // LED 4
-;    if(0<wkByte)  // off/on bit
-;    {
-;        LATB |= 0b00010000;   // 
-;    }else{
-;        LATB &= 0b11101111;
-;    }
 	; LED4
 	; now we have to look at MSByteLED
 	bsf	TEMP_W_INTR,4		; set it on as a default
 	btfss	MSByteLED,LEDONBIT0	; ON bit on?
 	bcf	TEMP_W_INTR,4		; if not, turn LED off
-
-;    wkByte=inMSByteLED;
-;    wkByte &= 0b00000001;
-;    if(0<wkByte)  // dim/bright bit
-;    {
-;        ODCONB &= 0b11101111;
-;    }else{
-;
-;        ODCONB |= 0b00010000;   // 
-;    } 
+ 
 	bsf	TEMP_INTR,4		; set it DIM as a default
 	btfsc	MSByteLED,LEDBRIGHTBIT0	; BRIGHT bit on?
 	bcf	TEMP_INTR,4		; if not, turn OD off 
@@ -1744,75 +1665,29 @@ UpdateLEDs:
 	
 	movlb	D'3'			; back to bank 3 for xSByteLED variable
 
-;    wkByte=inMSByteLED;
-;    wkByte &= 0b00001000;  // LED 5
-;    if(0<wkByte)  // off/on bit
-;    {
-;        LATC |= 0b00100000;   // 
-;    }else{
-;        LATC &= 0b11011111;
-;    }
 	; LED5
 	bsf	TEMP_W_INTR,5		; set it on as a default
 	btfss	MSByteLED,LEDONBIT1	; ON bit on?
 	bcf	TEMP_W_INTR,5		; if not, turn LED off
-;    wkByte=inMSByteLED;
-;    wkByte &= 0b00000100;
-;    if(0<wkByte)  // dim/bright bit
-;    {
-;        ODCONC &= 0b11011111;
-;    }else{
-;
-;        ODCONC |= 0b00100000;   // 
-;    } 
+ 
 	bsf	TEMP_INTR,5		; set it DIM as a default
 	btfsc	MSByteLED,LEDBRIGHTBIT1	; BRIGHT bit on?
 	bcf	TEMP_INTR,5		; if not, turn OD off         
-;    wkByte=inMSByteLED;
-;    wkByte &= 0b00100000;  // LED 6
-;    if(0<wkByte)  // off/on bit
-;    {
-;        LATC |= 0b01000000;   // 
-;    }else{
-;        LATC &= 0b10111111;
-;    }
+
 	; LED6
 	bsf	TEMP_W_INTR,6		; set it on as a default
 	btfss	MSByteLED,LEDONBIT2	; ON bit on?
 	bcf	TEMP_W_INTR,6		; if not, turn LED off	
-;    wkByte=inMSByteLED;
-;    wkByte &= 0b00010000;
-;    if(0<wkByte)  // dim/bright bit
-;    {
-;        ODCONC &= 0b10111111;
-;    }else{
-;
-;        ODCONC |= 0b01000000;   // 
-;    } 
+
 	bsf	TEMP_INTR,6		; set it DIM as a default
 	btfsc	MSByteLED,LEDBRIGHTBIT2	; BRIGHT bit on?
 	bcf	TEMP_INTR,6		; if not, turn OD off      
-;    wkByte=inMSByteLED;
-;    wkByte &= 0b10000000;  // LED 7
-;    if(0<wkByte)  // off/on bit
-;    {
-;        LATC |= 0b10000000;   // 
-;    }else{
-;        LATC &= 0b01111111;
-;    }
+
 	; LED7
 	bsf	TEMP_W_INTR,7		; set it on as a default
 	btfss	MSByteLED,LEDONBIT3	; ON bit on?
 	bcf	TEMP_W_INTR,7		; if not, turn LED off	
-;    wkByte=inMSByteLED;
-;    wkByte &= 0b01000000;
-;    if(0<wkByte)  // dim/bright bit
-;    {
-;        ODCONC &= 0b01111111;
-;    }else{
-;
-;        ODCONC |= 0b10000000;   // 
-;    } 
+
 	bsf	TEMP_INTR,7		; set it DIM as a default
 	btfsc	MSByteLED,LEDBRIGHTBIT3	; BRIGHT bit on?
 	bcf	TEMP_INTR,7		; if not, turn OD off  
@@ -2102,18 +1977,18 @@ CTMContinue:
 	    movlw   #STAGE          ;get the address of STAGE variable 
 	    movwf   FSR0L	    ;put it in the source FSR
 	    goto    CopyMemoryBlock
-	    
-CopyFromModel:
-	; note: process EG0 or EG1 based on bit 7 of w
-	; set up CopyMemoryBlock 
-	; default EG0
-	    clrf    FSR0H	    ;default: copy from bank 0 (EG0) (note: 128 byte banks!)
-	; test incoming WREG bit 7 for EG0/EG1
-	    btfsc   WREG,7	    ; test bit 7 in w if it is clear, skip next instruction
-	    goto    CFMContinue
-CFMEG1:	; set up EG1
-	    movlw   0x01	    ;copy from bank 2
-	    movwf   FSR0H
+; works, but unused	    
+;CopyFromModel:
+;	; note: process EG0 or EG1 based on bit 7 of w
+;	; set up CopyMemoryBlock 
+;	; default EG0
+;	    clrf    FSR0H	    ;default: copy from bank 0 (EG0) (note: 128 byte banks!)
+;	; test incoming WREG bit 7 for EG0/EG1
+;	    btfsc   WREG,7	    ; test bit 7 in w if it is clear, skip next instruction
+;	    goto    CFMContinue
+;CFMEG1:	; set up EG1
+;	    movlw   0x01	    ;copy from bank 2
+;	    movwf   FSR0H
 CFMContinue:
     	    movlw   0x20	    ;model is at 0x20, regardless of bank
 	    movwf   FSR0L	    ;model is source
@@ -3078,23 +2953,28 @@ Init_I2C:
 ;}
 	return
 	
-; convert working C code from DualEG (mcc generated) to ASM
+; This has been rewritten based on a details study of the datasheet
+;   implementing mode 1,1 with a 400kHz SCK for a 32MHz clock
 Init_SPI2:
+; note: settings updated per this link (see end)
+;https://www.microchip.com/forums/m185464.aspx
 ;    // Set the SPI2 module to the options selected in the User Interface
 	movlb D'3'
-;    // SMP Middle; CKE Idle to Active; = 0x00 MODE 1 when CKP Idle:Low, Active:High (not supported by MCP4922)
-;    // SMP Middle; CKE Active to Idle; = 0x40 MODE 0 when CKP Idle:Low, Active:High ( IS supported by MCP4922)
-;       0x20 is same as 0x40, but change clock to FOSC4 (8000kHz).  This was apparently too fast!!!	
-	movlw 0x40
+	movlw 0x00	 ;6/16/18 ozh - bit7 SMP Middle (0); bit6 CKE Rising Edge (0)
 	movwf SSP2STAT   ;SSP2STAT = 0x00;
 ;    
-;    // SSPEN enabled; CKP Idle:Low, Active:High; SSPM FOSC/4_SSPxADD;
-	movlw 0x2A
-	movwf SSP2CON1	;SSP2CON1 = 0x2A;
+;    // SSPEN enabled; CKP Idle:Hi, Active:Lo; SSPM FOSC/4_SSPxADD;
+	movlw 0x3A	;CKP Idle:Hi, Active:Lo; Bus Mode 1,1 
+		        ;SSPM Master & use SSPxADD for SCK
+	movwf SSP2CON1	
 ;   
 ;    // SSPADD 24; 
-	movlw 0x02     ;chg to 2 ( 1 did not work)
-	movwf SSP2ADD	;SSP2ADD = 0x02;
+; this is "baud" rate.  
+; SCL pin clock period = ((ADD<7:0>+1)*4)/Fosc
+; 0x13 = 400kHz for 32MHz clock.   note that this requires SSPM FOSC/4_SSPxADD 11 bits 1&0
+; see 16F18855 Table 32-2:  MSSP CLOCK RATE W/BRG
+	movlw 0x13 
+	movwf SSP2ADD
 	return
 	
 ; convert working C code from DualEG (mcc generated) to ASM
