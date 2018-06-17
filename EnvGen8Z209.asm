@@ -70,8 +70,12 @@
 ;2018-06-12 ozh - I believe the LED management is working now.	
 ;2018-06-15 ozh - a couple of performance tweaks.  Also, tested/calibrated "punch"
 ;2018-06-16 ozh - tidy up code & comments
+;2018-06-16 ozh - change clock to SSPM - Fosc/64 for faster SPI clock
 	
-;TODO:	performance - the EGs are snappy, but the fader updates can be delayed.
+;TODO:	performance - the EGs are snappy, but the fader updates can be delayed
+;      why does DACOUT still run during sustain - (volatile fader readings?)
+;	I think so because if faders are inactive, no updates seen!
+;   * * * WHY DOES OUTPUT interact with the gate level???? * * *
 ;   * * * NOTE * * *  we still have a +0.5v offset.  Need to update hardware test to drive output level from a fader.	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -2966,6 +2970,10 @@ Init_SPI2:
 ;    // SSPEN enabled; CKP Idle:Hi, Active:Lo; SSPM FOSC/4_SSPxADD;
 	movlw 0x3A	;CKP Idle:Hi, Active:Lo; Bus Mode 1,1 
 		        ;SSPM Master & use SSPxADD for SCK
+;	movlw 0x30	;SSPM - Fosc/4 - test only  TODO: revert this
+;	movlw 0x31	;SSPM - Fosc/16 - test only  TODO: revert this
+;	movlw 0x32	;SSPM - Fosc/64 - This is fastest clock! 
+
 	movwf SSP2CON1	
 ;   
 ;    // SSPADD 24; 
