@@ -78,8 +78,9 @@
 ; I'm not completely happy with this change functionally.  It makes max sustain 0xFE 
 ; but it is a performance improvement
 ;2018-06-17 ozh - the 0.5v bias is a PCB v1.5 harware error. Vss on the MCP4922 was NOT connected to ground. 
-
-; we're ALMOST done with this firmware revision (1.0?)
+;2018-06-17 ozh - the punch code cause the seconde EG to become an AR - so skip it
+	
+; we're done with this firmware revision (1.0?)
 
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -727,8 +728,12 @@ TestPunch:
 ;   leave this code uncommented out.  Make adjustments Main ... see FAKE_PUNCH_EXPO
 ;	comment out the next line to hardcode punch (i.e. goto TestLooping)
 ;	or the next TWO lines to skip punch
-	btfss	USE_ADSR		; Standard ADSR, so skip Punch
-	goto	TestLooping;
+    
+;
+;   If you uncomment these lines, it breaks the Decay/Sustain and you end up with an A/R envelope
+;   so skipPunch !!! (until you can investigate and make it work correctly)
+;	btfss	USE_ADSR		; Standard ADSR, so skip Punch
+;	goto	TestLooping;
 SkipPunch:
 	; Are we on the Punch stage?
 	movf	STAGE, w		; We're about to examine what STAGE we're on
@@ -2009,7 +2014,7 @@ CFMContinue:
 	    goto    CopyMemoryBlock
 
 CopyMemoryBlock:	    
-	    movlw   d'28'	    ; # of bytes to move
+	    movlw   d'50'	    ; # of bytes to move (actually 45 as of 6/17/18)
 	    movwf   LOOP_COUNTER
 CopyLoop:
 	    moviw   INDF0++
