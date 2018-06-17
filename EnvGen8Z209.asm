@@ -71,12 +71,16 @@
 ;2018-06-15 ozh - a couple of performance tweaks.  Also, tested/calibrated "punch"
 ;2018-06-16 ozh - tidy up code & comments
 ;2018-06-16 ozh - change clock to SSPM - Fosc/64 for faster SPI clock
+;		    faders are now responsive
+;2018-06-16 ozh - next, work on improving the fader accuracy w/burst mode
 	
 ;TODO:	performance - the EGs are snappy, but the fader updates can be delayed
 ;      why does DACOUT still run during sustain - (volatile fader readings?)
 ;	I think so because if faders are inactive, no updates seen!
 ;   * * * WHY DOES OUTPUT interact with the gate level???? * * *
 ;   * * * NOTE * * *  we still have a +0.5v offset.  Need to update hardware test to drive output level from a fader.	
+
+	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -2958,22 +2962,28 @@ Init_I2C:
 	return
 	
 ; This has been rewritten based on a details study of the datasheet
-;   implementing mode 1,1 with a 400kHz SCK for a 32MHz clock
+;   implementing mode 0,0 with a 500kHz SCK for a 32MHz clock
 Init_SPI2:
-; note: settings updated per this link (see end)
-;https://www.microchip.com/forums/m185464.aspx
-;    // Set the SPI2 module to the options selected in the User Interface
 	movlb D'3'
-	movlw 0x00	 ;6/16/18 ozh - bit7 SMP Middle (0); bit6 CKE Rising Edge (0)
-	movwf SSP2STAT   ;SSP2STAT = 0x00;
+;	the following did not work
+;	movlw 0x00	 ;6/16/18 ozh - bit7 SMP Middle (0); bit6 CKE Rising Edge (0)
+; Note: don't us the above setting.  I breaks the SPI comms
+	
+;    // SMP Middle; CKE Active to Idle; = 0x40 MODE 0 when CKP Idle:Low, Active:High ( IS supported by MCP4922)
+	movlw 0x40	; this works
+; end test
+	movwf SSP2STAT
 ;    
 ;    // SSPEN enabled; CKP Idle:Hi, Active:Lo; SSPM FOSC/4_SSPxADD;
-	movlw 0x3A	;CKP Idle:Hi, Active:Lo; Bus Mode 1,1 
+;   the following comments are for historical documentation only Mode 1,1 did not seem to work
+;	movlw 0x3A	;CKP Idle:Hi, Active:Lo; Bus Mode 1,1 
 		        ;SSPM Master & use SSPxADD for SCK
 ;	movlw 0x30	;SSPM - Fosc/4 - test only  TODO: revert this
 ;	movlw 0x31	;SSPM - Fosc/16 - test only  TODO: revert this
 ;	movlw 0x32	;SSPM - Fosc/64 - This is fastest clock! 
-
+;    // high nibble: SSPEN enabled; CKP Idle:Low, Active:High; 
+;	movlw 0x2A	;SSPM FOSC/4_SSPxADD;
+	movlw 0x22	;SSPM - Fosc/64 - This is fastest clock! 
 	movwf SSP2CON1	
 ;   
 ;    // SSPADD 24; 
@@ -2981,6 +2991,8 @@ Init_SPI2:
 ; SCL pin clock period = ((ADD<7:0>+1)*4)/Fosc
 ; 0x13 = 400kHz for 32MHz clock.   note that this requires SSPM FOSC/4_SSPxADD 11 bits 1&0
 ; see 16F18855 Table 32-2:  MSSP CLOCK RATE W/BRG
+	
+; fyi, the following is irrelevant with SSPM - Fosc/64 
 	movlw 0x13 
 	movwf SSP2ADD
 	return
