@@ -80,8 +80,10 @@
 ;2018-06-17 ozh - the 0.5v bias is a PCB v1.5 harware error. Vss on the MCP4922 was NOT connected to ground. 
 ;2018-06-17 ozh - the punch code cause the seconde EG to become an AR - so skip it
 	
-; we're done with this firmware revision (1.0?)
+; we're not quite done with this firmware revision (1.0?)
 
+;TODO: Sustain varies wildly (in a S/H fashion!!) when is it at full level.
+	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
