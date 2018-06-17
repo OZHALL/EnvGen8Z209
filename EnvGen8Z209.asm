@@ -77,14 +77,10 @@
 ;		    this makes the "Don't update DAC if no change" work better
 ; I'm not completely happy with this change functionally.  It makes max sustain 0xFE 
 ; but it is a performance improvement
-	
-;TODO:	
-;   * * * WHY DOES OUTPUT interact with the gate level???? * * *
-;   need to beef up power supply? (don't think so).  Need to add caps on VRefs? yes
-	
-;   * * * NOTE * * *  we still have a +0.5v offset.  Need to update hardware test to drive output level from a fader.	
-	; also we need to check the software. I believe this is a software issue because on reset the DAC out goes to 0v
-	
+;2018-06-17 ozh - the 0.5v bias is a PCB v1.5 harware error. Vss on the MCP4922 was NOT connected to ground. 
+
+; we're ALMOST done with this firmware revision (1.0?)
+
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
