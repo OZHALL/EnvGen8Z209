@@ -2439,7 +2439,8 @@ A0Active:
 	movfw	ADC_VALUE	    ; get the new value
 	movwi	0[INDF0]	    ; update model value for this fader from W
 	
-A0CalcInc:	
+A0CalcInc:
+	movlb	D'0'
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
 	subwf	ADC_VALUE, w   ;  ATTACK_CV, w
@@ -2542,6 +2543,7 @@ D0Active:
 	movwi	0[INDF0]	    ; update model value for this fader from W
 
 D0CalcInc:
+	movlb	D'0'
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
 	subwf	ADC_VALUE, w
@@ -2646,6 +2648,7 @@ S0Active:
 	; WORK_HI and WORK_LO when comparing to see whether to update the DAC
 
 S0CalcInc:
+	movlb	D'0'
 	movwf	SUSTAIN_CV			; Simply store this one- easy!
 	goto	MainLoop
 
@@ -2720,6 +2723,7 @@ R0Active:
 	movwi	0[INDF0]	    ; update model value for this fader from W
 
 R0CalcInc:
+	movlb	D'0'
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
 	subwf	ADC_VALUE, w
