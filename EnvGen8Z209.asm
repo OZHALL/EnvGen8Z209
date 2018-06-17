@@ -72,14 +72,18 @@
 ;2018-06-16 ozh - tidy up code & comments
 ;2018-06-16 ozh - change clock to SSPM - Fosc/64 for faster SPI clock
 ;		    faders are now responsive
-;2018-06-16 ozh - next, work on improving the fader accuracy w/burst mode
+;2018-06-16 ozh - implemented burst mode for ADC for greater ADC accuracy
+;2018-06-16 ozh - zero out the LSB of ADC_VALUE when using it for SUSTAIN
+;		    this makes the "Don't update DAC if no change" work better
+; I'm not completely happy with this change functionally.  It makes max sustain 0xFE 
+; but it is a performance improvement
 	
-;TODO:	performance - the EGs are snappy, but the fader updates can be delayed
-;      why does DACOUT still run during sustain - (volatile fader readings?)
-;	I think so because if faders are inactive, no updates seen!
+;TODO:	
 ;   * * * WHY DOES OUTPUT interact with the gate level???? * * *
+;   need to beef up power supply? (don't think so).  Need to add caps on VRefs? yes
+	
 ;   * * * NOTE * * *  we still have a +0.5v offset.  Need to update hardware test to drive output level from a fader.	
-
+	; also we need to check the software. I believe this is a software issue because on reset the DAC out goes to 0v
 	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -1935,7 +1939,9 @@ DoADConversion:
 	movwf	ADPCH				;ADC Positive Channel Selection
 
 	; Short delay whilst the channel settles
-	movlw   D'50'
+	movlw   D'50'			;TODO: do we need to increase this with the faster clock of 16F18855?
+;   This did NOT seem to make a lot of difference
+;	movlw   D'100'			;increase this cuz the faster clock of 16F18855
 	movwf   TEMP
 	decfsz  TEMP, f
 	bra	$-1
@@ -2134,6 +2140,7 @@ Main:
 
 	call Init_Osc
 	call Init_Ports
+	call init_ADCC
 	;Test ONLY Z209 code
 ;	bcf	GATE_LED0
 ;	nop	; this seems to be required!!! ozh
@@ -2173,39 +2180,39 @@ Main:
 	; T2PR = 28Dh same as PR2
 	movwf	PR2				; Interrupts at 1MHz/32 = 31.25KHz
 
-; TODO: review this setup
-	movlb	D'1'				; Bank 1
-	; set up the A/D clock
-	movlw	B'00000101'			; Fosc/16
-	movwf	ADCLK
-	; ADCON0 - turn ADC on see 23.6 
-;	movlw	B'00000001'			; AN0, ADC on
-	movlw	B'10000000'			; ADON,ADCON,n/a,ADCS (clock source 0 = Fosc)
-						; ADFRM( 0 = left justified)
-	movwf	ADCON0				; ADGO ( set to 1 to start the conversion)
-	; ADCON1
-	movlw	B'00000001'				; ADDPOL 0 TODO: recheck this)
-						; ADIPEN 0 recheck
-						; ADGPOL 0 recheck
-	movwf	ADCON1				; ADDSEN 1 enable double sample
-						
-;	movlw	B'01100000'			; Left-justified, Fosc/64, Vss to Vdd range.
-;	movwf	ADCON1
-	; ADCON2
-	movlw	B'01000000' ;ADPSIS 0=send ADFLTR filtered results to ADPREV
-			    ;ADCRS 100 - LP filter time is 2 ADCRS, filter gain 1:1
-			    ;ADACLR 0  - not started
-			    ;ADMD (mode) 000 Basic Mode (for now)
-	movwf	ADCON2
-	; ADCON3
-	movlw	B'00000000'    ;ADCALC TODO: recheck this 000 first derivative of single measurement
-			    ;ADSOI 0 ADGO is not cleard by hardware - do it in software
-			    ;ADTMD 000 (ADTIF is disabled)
-	movwf	ADCON3
-	
-	;ADREF
-	movlw	B'00000000'    ; ADNREF 0 VREF- is AVSS;	ADPREF 00 VREF+ is VDD
-	movwf	ADREF
+; this setup works, but I have tweaked it in init_ADCC:
+;	movlb	D'1'				; Bank 1
+;	; set up the A/D clock
+;	movlw	B'00000101'			; Fosc/16
+;	movwf	ADCLK
+;	; ADCON0 - turn ADC on see 23.6 
+;;	movlw	B'00000001'			; AN0, ADC on
+;	movlw	B'10000000'			; ADON,ADCON,n/a,ADCS (clock source 0 = Fosc)
+;						; ADFRM( 0 = left justified)
+;	movwf	ADCON0				; ADGO ( set to 1 to start the conversion)
+;	; ADCON1
+;	movlw	B'00000001'				; ADDPOL 0 TODO: recheck this)
+;						; ADIPEN 0 recheck
+;						; ADGPOL 0 recheck
+;	movwf	ADCON1				; ADDSEN 1 enable double sample
+;						
+;;	movlw	B'01100000'			; Left-justified, Fosc/64, Vss to Vdd range.
+;;	movwf	ADCON1
+;	; ADCON2
+;	movlw	B'01000000' ;ADPSIS 0=send ADFLTR filtered results to ADPREV
+;			    ;ADCRS 100 - LP filter time is 2 ADCRS, filter gain 1:1
+;			    ;ADACLR 0  - not started
+;			    ;ADMD (mode) 000 Basic Mode (for now)
+;	movwf	ADCON2
+;	; ADCON3
+;	movlw	B'00000000'    ;ADCALC TODO: recheck this 000 first derivative of single measurement
+;			    ;ADSOI 0 ADGO is not cleard by hardware - do it in software
+;			    ;ADTMD 000 (ADTIF is disabled)
+;	movwf	ADCON3
+;	
+;	;ADREF
+;	movlw	B'00000000'    ; ADNREF 0 VREF- is AVSS;	ADPREF 00 VREF+ is VDD
+;	movwf	ADREF
 	
 	; set channel using ADPCH - pretty straight forward
 	; 00000000 = ANA0
@@ -2637,6 +2644,10 @@ S0Active:
 	movwf	FSR0L
 	movfw	ADC_VALUE	    ; get the new value
 	movwi	0[INDF0]	    ; update model value for this fader from W
+	;This works to stabilize the sustain.  It will never reach completely 100%, only 0xFE
+	andlw	b'11111110'	    ; mask out the bottom bit for more stability
+	;a better alternative might be to reduce the resolution of the 
+	; WORK_HI and WORK_LO when comparing to see whether to update the DAC
 
 S0CalcInc:
 	movwf	SUSTAIN_CV			; Simply store this one- easy!
@@ -2672,7 +2683,10 @@ S1Active:
 	movwf	FSR0L
 	movfw	ADC_VALUE	    ; get the new value
 	movwi	0[INDF0]	    ; update model value for this fader from W
-	
+	;This works to stabilize the sustain.  It will never reach completely 100%, only 0xFE
+	andlw	b'11111110'	    ; mask out the bottom bit for more stability
+	;a better alternative might be to reduce the resolution of the 
+	; WORK_HI and WORK_LO when comparing to see whether to update the DAC	
 S1CalcInc:
 	movlb	D'2'		; change to bank 2
 	movwf	SUSTAIN_CV	; Simply store this one- easy!
@@ -2922,6 +2936,99 @@ Init_Ports:
 ;    }
 ;     */
 ;    // end ozh
+;
+;   Copy initialization from a known good MCC generated config (PTL30_fader_DualEGv2_5_4
+;
+init_ADCC:
+;void ADCC_Initialize(void)
+;{
+    movlb   D'1'	    ; bank 1 has all AD core regs
+;    // set the ADCC to the options selected in the User Interface
+;    // ADDSEN disabled; ADGPOL digital_low; ADIPEN disabled; ADPPOL VSS; 
+;    ADCON1 = 0x00;
+    movlw   0x00
+    movwf   ADCON1
+;    // ADCRS 0; ADMD Burst_average_mode; ADACLR disabled; ADPSIS ADFLTR; 
+;    ADCON2 = 0x03;
+    movlw   0x03
+    movwf   ADCON2
+;    // ADCALC First derivative of Single measurement; ADTMD disabled; ADSOI ADGO not cleared; 
+;    ADCON3 = 0x00;
+    movlw   0x00
+    movwf   ADCON3
+;    // ADACT disabled; 
+;    ADACT = 0x00;
+    movlw   0x00
+    movwf   ADACT
+;    // ADAOV ACC or ADERR not Overflowed; 
+;    ADSTAT = 0x00;
+    movlw   0x00
+    movwf   ADSTAT
+;    // ADCCS FOSC/128; 
+;    ADCLK = 0x3F;
+    movlw   0x3F
+    movwf   ADCLK
+;    // ADNREF VSS; ADPREF VDD; 
+;    ADREF = 0x00;
+    movlw   0x00
+    movwf   ADREF
+;    // ADCAP Additional uC disabled; 
+;    ADCAP = 0x00;
+    movlw   0x00
+    movwf   ADCAP
+;    // ADPRE 0; 
+;    ADPRE = 0x00;
+    movlw   0x00
+    movwf   ADPRE
+;    // ADACQ 10; 
+;    ADACQ = 0x0A;
+    movlw   0x0A
+    movwf   ADACQ
+;    // ADPCH ANA0; 
+;    ADPCH = 0x00;
+    movlw   0x00
+    movwf   ADPCH
+;   next bank
+    movlb   D'2'
+;    // ADRPT 0; 
+;    ADRPT = 0x00;
+    movlw   0x00
+    movwf   ADRPT
+;    // ADLTHL 0; 
+;    ADLTHL = 0x00;
+    movlw   0x00
+    movwf   ADLTHL
+;    // ADLTHH 0; 
+;    ADLTHH = 0x00;
+    movlw   0x00
+    movwf   ADLTHH
+;    // ADUTHL 0; 
+;    ADUTHL = 0x00;
+    movlw   0x00
+    movwf   ADUTHL
+;    // ADUTHH 0; 
+;    ADUTHH = 0x00;
+    movlw   0x00
+    movwf   ADUTHH
+;    // ADSTPTL 0; 
+;    ADSTPTL = 0x00;
+    movlw   0x00
+    movwf   ADSTPTL
+;    // ADSTPTH 0; 
+;    ADSTPTH = 0x00;
+    movlw   0x00
+    movwf   ADSTPTH
+;    
+;   back to bank 1
+    movlb   D'1'
+;    // ADGO stop; ADFM right; ADON enabled; ADCONT disabled; ADCS FOSC/ADCLK; 
+;    ADCON0 = 0x84;
+;   note: make (bit 2) ADFRM0=0 (left justified), not right
+    movlw   0x80
+    movwf   ADCON0
+;}
+	return
+
 Init_I2C:
 ;void I2C1_Initialize(void)
 ;{
