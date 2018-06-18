@@ -79,11 +79,11 @@
 ; but it is a performance improvement
 ;2018-06-17 ozh - the 0.5v bias is a PCB v1.5 harware error. Vss on the MCP4922 was NOT connected to ground. 
 ;2018-06-17 ozh - the punch code cause the seconde EG to become an AR - so skip it
-	
-; we're not quite done with this firmware revision (1.0?)
+;2018-06-17 ozh - I backed out the init_ADCC changes.  This will require more time/testing.
+;		    this addressed the "Sustain varies wildly (in a S/H fashion!!)" problem
+;
+; we're done with this firmware revision (1.0)
 
-;TODO: Sustain varies wildly (in a S/H fashion!!) when is it at full level.
-	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -2143,7 +2143,7 @@ Main:
 
 	call Init_Osc
 	call Init_Ports
-	call init_ADCC
+;	call init_ADCC
 	;Test ONLY Z209 code
 ;	bcf	GATE_LED0
 ;	nop	; this seems to be required!!! ozh
@@ -2184,38 +2184,38 @@ Main:
 	movwf	PR2				; Interrupts at 1MHz/32 = 31.25KHz
 
 ; this setup works, but I have tweaked it in init_ADCC:
-;	movlb	D'1'				; Bank 1
-;	; set up the A/D clock
-;	movlw	B'00000101'			; Fosc/16
-;	movwf	ADCLK
-;	; ADCON0 - turn ADC on see 23.6 
-;;	movlw	B'00000001'			; AN0, ADC on
-;	movlw	B'10000000'			; ADON,ADCON,n/a,ADCS (clock source 0 = Fosc)
-;						; ADFRM( 0 = left justified)
-;	movwf	ADCON0				; ADGO ( set to 1 to start the conversion)
-;	; ADCON1
-;	movlw	B'00000001'				; ADDPOL 0 TODO: recheck this)
-;						; ADIPEN 0 recheck
-;						; ADGPOL 0 recheck
-;	movwf	ADCON1				; ADDSEN 1 enable double sample
-;						
-;;	movlw	B'01100000'			; Left-justified, Fosc/64, Vss to Vdd range.
-;;	movwf	ADCON1
-;	; ADCON2
-;	movlw	B'01000000' ;ADPSIS 0=send ADFLTR filtered results to ADPREV
-;			    ;ADCRS 100 - LP filter time is 2 ADCRS, filter gain 1:1
-;			    ;ADACLR 0  - not started
-;			    ;ADMD (mode) 000 Basic Mode (for now)
-;	movwf	ADCON2
-;	; ADCON3
-;	movlw	B'00000000'    ;ADCALC TODO: recheck this 000 first derivative of single measurement
-;			    ;ADSOI 0 ADGO is not cleard by hardware - do it in software
-;			    ;ADTMD 000 (ADTIF is disabled)
-;	movwf	ADCON3
-;	
-;	;ADREF
-;	movlw	B'00000000'    ; ADNREF 0 VREF- is AVSS;	ADPREF 00 VREF+ is VDD
-;	movwf	ADREF
+	movlb	D'1'				; Bank 1
+	; set up the A/D clock
+	movlw	B'00000101'			; Fosc/16
+	movwf	ADCLK
+	; ADCON0 - turn ADC on see 23.6 
+;	movlw	B'00000001'			; AN0, ADC on
+	movlw	B'10000000'			; ADON,ADCON,n/a,ADCS (clock source 0 = Fosc)
+						; ADFRM( 0 = left justified)
+	movwf	ADCON0				; ADGO ( set to 1 to start the conversion)
+	; ADCON1
+	movlw	B'00000001'				; ADDPOL 0 TODO: recheck this)
+						; ADIPEN 0 recheck
+						; ADGPOL 0 recheck
+	movwf	ADCON1				; ADDSEN 1 enable double sample
+						
+;	movlw	B'01100000'			; Left-justified, Fosc/64, Vss to Vdd range.
+;	movwf	ADCON1
+	; ADCON2
+	movlw	B'01000000' ;ADPSIS 0=send ADFLTR filtered results to ADPREV
+			    ;ADCRS 100 - LP filter time is 2 ADCRS, filter gain 1:1
+			    ;ADACLR 0  - not started
+			    ;ADMD (mode) 000 Basic Mode (for now)
+	movwf	ADCON2
+	; ADCON3
+	movlw	B'00000000'    ;ADCALC TODO: recheck this 000 first derivative of single measurement
+			    ;ADSOI 0 ADGO is not cleard by hardware - do it in software
+			    ;ADTMD 000 (ADTIF is disabled)
+	movwf	ADCON3
+	
+	;ADREF
+	movlw	B'00000000'    ; ADNREF 0 VREF- is AVSS;	ADPREF 00 VREF+ is VDD
+	movwf	ADREF
 	
 	; set channel using ADPCH - pretty straight forward
 	; 00000000 = ANA0
