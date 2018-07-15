@@ -84,7 +84,7 @@
 ;
 ; we're done with this firmware revision (1.0)
 ;2018-07-15 ozh - tweak SPI2 (SSP2) clock to be Fosc/12 (2.67 MHz).  Greatly improved fader responsiveness
-	
+; we're done with this firmware revision (1.1)	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
