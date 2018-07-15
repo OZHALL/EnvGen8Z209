@@ -83,7 +83,8 @@
 ;		    this addressed the "Sustain varies wildly (in a S/H fashion!!)" problem
 ;
 ; we're done with this firmware revision (1.0)
-
+;2018-07-15 ozh - tweak SPI2 (SSP2) clock to be Fosc/12 (2.67 MHz).  Greatly improved fader responsiveness
+	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -3096,19 +3097,22 @@ Init_SPI2:
 ;	movlw 0x31	;SSPM - Fosc/16 - test only  TODO: revert this
 ;	movlw 0x32	;SSPM - Fosc/64 - This is fastest clock! 
 ;    // high nibble: SSPEN enabled; CKP Idle:Low, Active:High; 
-;	movlw 0x2A	;SSPM FOSC/4_SSPxADD;
-;	movlw 0x22	;SSPM - Fosc/64 - This is fastest clock! 
-	movlw 0x21	;SSPM Fosc/16 (2Mhz)	- works.  No need to set SSP2ADD if we use this
+	movlw 0x2A	;SSPM FOSC/4_SSPxADD; Fosc/(4*(SSPxADD+1))
+;	movlw 0x22	;SSPM - Fosc/64 - This is next to fastest clock! 
+;	movlw 0x21	;SSPM Fosc/16 (2Mhz)	- works.  No need to set SSP2ADD if we use this
 	movwf SSP2CON1	
 ;   
 ;    // SSPADD 24; 
 ; this is "baud" rate.  
 ; SCL pin clock period = ((ADD<7:0>+1)*4)/Fosc
 ; 0x13 = 400kHz for 32MHz clock.   note that this requires SSPM FOSC/4_SSPxADD 11 bits 1&0
-; see 16F18855 Table 32-2:  MSSP CLOCK RATE W/BRG
+; see 16F18855 Table 31-2:  MSSP CLOCK RATE W/BRG
 	
-; fyi, the following is irrelevant with SSPM - Fosc/64 
-	movlw 0x13 
+; fyi, the following is irrelevant with SSPM - Fosc/4 
+;	movlw 0x03  ; this works - same as Fosc/16
+	movlw 0x02  ; this works - same as Fosc/12 This is the fastest clock that works!  
+;	movlw 0x01  ; does not work
+;	movlw 0x00  ; does not work
 	movwf SSP2ADD
 	return
 	
