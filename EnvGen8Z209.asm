@@ -3097,7 +3097,8 @@ Init_SPI2:
 ;	movlw 0x32	;SSPM - Fosc/64 - This is fastest clock! 
 ;    // high nibble: SSPEN enabled; CKP Idle:Low, Active:High; 
 ;	movlw 0x2A	;SSPM FOSC/4_SSPxADD;
-	movlw 0x22	;SSPM - Fosc/64 - This is fastest clock! 
+;	movlw 0x22	;SSPM - Fosc/64 - This is fastest clock! 
+	movlw 0x21	;SSPM Fosc/16 (2Mhz)	- works.  No need to set SSP2ADD if we use this
 	movwf SSP2CON1	
 ;   
 ;    // SSPADD 24; 
