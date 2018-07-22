@@ -2611,7 +2611,7 @@ D1CalcInc:
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
 	movfw	TIME_CV
 	subwf	ADC_VALUE, w
-	btfss	BORROW
+	btfss	BORROW											    
 	movlw	D'0'				; If value is <0, use minimum
 	; Get the new phase increment for the DECAY stage
 	movwf	FSR0L				; Store index
@@ -2629,6 +2629,13 @@ D1CalcInc:
 	
 ; Update the Sustain CV
 Sustain0CV:
+;;	test only from here to S0ActiveTest
+;	movlb	D'0'
+;	movf	STAGE, w		; We're about to examine what STAGE we're on
+;	xorlw	D'4'
+;	btfsc	ZERO			; Is STAGE==4 yet? (SUSTAIN) - skip if clear (i.e. it IS NOT stage 4)
+;	goto    MainLoop		; test only - it IS STAGE==4 - so don't update
+S0ActiveTest:
 	btfsc	FaderTakeoverFlags,2		;see if fader is active
 	goto	S0Active
 	
@@ -2980,7 +2987,9 @@ init_ADCC:
     movwf   ADSTAT
 ;    // ADCCS FOSC/128; 
 ;    ADCLK = 0x3F;
-    movlw   0x3F
+;    // ADCCS FOSC/16; 
+;    ADCLK = 0x07;
+    movlw   0x10
     movwf   ADCLK
 ;    // ADNREF VSS; ADPREF VDD; 
 ;    ADREF = 0x00;
@@ -2996,7 +3005,9 @@ init_ADCC:
     movwf   ADPRE
 ;    // ADACQ 10; 
 ;    ADACQ = 0x0A;
-    movlw   0x0A
+;    // ADACQ 2; 
+;    ADACQ = 0x02;
+    movlw   0x02
     movwf   ADACQ
 ;    // ADPCH ANA0; 
 ;    ADPCH = 0x00;
