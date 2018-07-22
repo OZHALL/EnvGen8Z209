@@ -85,6 +85,10 @@
 ; we're done with this firmware revision (1.0)
 ;2018-07-15 ozh - tweak SPI2 (SSP2) clock to be Fosc/12 (2.67 MHz).  Greatly improved fader responsiveness
 ; we're done with this firmware revision (1.1)	
+	
+;2018-07-22 ozh - change the GATE indication from Gate ON = LED ON to = LED OFF
+;		  that way, when the unit is at rest, 
+;                 also tweak ADCC parameters
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -586,7 +590,7 @@ TestTrigger:
 	goto	TestGate			; No, so skip
 	movf	BSR,w			; this bank "preservation" works
 	movlb	D'0' ; Bank 0
-	bsf	GATE_LED0
+	bcf	GATE_LED0		; gate ON = cut off LED ;bsf	GATE_LED0
 	movwf	BSR
 	goto	StartEnvelope
 	
@@ -601,7 +605,7 @@ TestTrigger1:
 	goto	TestGate		; No, so skip
 	movf	BSR,w			; this bank "preservation" works
 	movlb	D'0' ; Bank 0
-	bsf	GATE_LED1
+	bcf	GATE_LED1		; gate ON = cut off LED ;bsf	GATE_LED1
 	movwf	BSR
 	
 StartEnvelope:
@@ -635,7 +639,7 @@ TestGate:
 	goto	GenerateEnvelope	; No, so skip
 	movf	BSR,w			; this bank "preservation" works
 	movlb	D'0' ; Bank 0
-	bcf	GATE_LED0
+	bsf	GATE_LED0		; gate OFF = cut on LED ;bcf	GATE_LED0
 	movwf	BSR
 	goto	EndEnvelope
 TestGate1:
@@ -650,7 +654,7 @@ TestGate1:
 	goto	GenerateEnvelope	; No, so skip
 	movf	BSR,w			; this bank "preservation" works
 	movlb	D'0' ; Bank 0
-	bcf	GATE_LED1
+	bsf	GATE_LED1		; gate ON = cut off LED ;bcf	GATE_LED1
 	movwf	BSR
 	
 EndEnvelope:
@@ -2185,9 +2189,11 @@ Main:
 	movwf	PR2				; Interrupts at 1MHz/32 = 31.25KHz
 
 ; this setup works, but I have tweaked it in init_ADCC:
-	movlb	D'1'				; Bank 1
+	movlb	D'1'				; Bank 1 
+	movlw	B'00000010'			; ADACQ = 0x02;
+	movwf	ADACQ
 	; set up the A/D clock
-	movlw	B'00000101'			; Fosc/16
+	movlw	B'00000111'			; ADCCS FOSC/16 0x07
 	movwf	ADCLK
 	; ADCON0 - turn ADC on see 23.6 
 ;	movlw	B'00000001'			; AN0, ADC on
