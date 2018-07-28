@@ -89,6 +89,7 @@
 ;		  that way, when the unit is at rest, 
 ;                 also tweak ADCC parameters
 ;2018-07-28 ozh - double the Decay and Release times
+;2018-07-28 ozh - added DUMMYVAR cuz something was overwriting "TIME_CV" at that location
 ;firmware revision (1.2)	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -318,6 +319,8 @@
 
 	PREV_WORK_HI
 	PREV_WORK_LO
+	DUMMYVAR                                        ;note: something was overwriting the file register here
+	                                                ; adding this dummy variable just masks that issue
 	TIME_CV						; TIME is used directly
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
 
@@ -2235,6 +2238,8 @@ Main:
 	movlb	D'0'					; Bank 0
 	
 	; Set up both indirection pointers for Bank0
+	; note: we have not yet started TMR2 interrupts
+	; once we do, usd FSR1 only in interrupts and FSR0 only in main code!
 	clrf	FSR0H
 	clrf	FSR1H
 
