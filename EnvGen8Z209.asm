@@ -317,16 +317,17 @@
 	MULT_OUT_HI
 	MULT_OUT_LO
 
-	PREV_WORK_HI
-	PREV_WORK_LO
-	DUMMYVAR                                        ;note: something was overwriting the file register here
-	                                                ; adding this dummy variable just masks that issue
 	TIME_CV						; TIME is used directly
 	MODE_CV						; Used to set the LFO_MODE and LOOPING flags
 
 	MODEL_VALUE
 	FADERACTIVE_FLAG	
 	OVERRUN_FLAG
+
+	PREV_WORK_HI
+	PREV_WORK_LO
+	DUMMYVAR                                        ;note: something was overwriting the file register here
+	                                                ; adding this dummy variable just masks that issue
   ENDC
 ;   these are used only by Delay1Sec which is called by PartyLights before the main loop
 ;   the bank does not really matter, as long as they are out of the way of other variables
