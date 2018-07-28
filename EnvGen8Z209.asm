@@ -81,7 +81,6 @@
 ;2018-06-17 ozh - the punch code cause the seconde EG to become an AR - so skip it
 ;2018-06-17 ozh - I backed out the init_ADCC changes.  This will require more time/testing.
 ;		    this addressed the "Sustain varies wildly (in a S/H fashion!!)" problem
-;
 ; we're done with this firmware revision (1.0)
 ;2018-07-15 ozh - tweak SPI2 (SSP2) clock to be Fosc/12 (2.67 MHz).  Greatly improved fader responsiveness
 ; we're done with this firmware revision (1.1)	
@@ -89,6 +88,8 @@
 ;2018-07-22 ozh - change the GATE indication from Gate ON = LED ON to = LED OFF
 ;		  that way, when the unit is at rest, 
 ;                 also tweak ADCC parameters
+;2018-07-28 ozh - double the Decay and Release times
+;firmware revision (1.2)	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -2575,6 +2576,9 @@ D0CalcInc:
 	incf	FSR0H, f			; Move to lo table
 	movf	INDF0, w
 	movwf	DECAY_INC_LO
+	lsrf    DECAY_INC_HI, f			; double the decay times
+	rrf     DECAY_INC_MID, f
+	rrf     DECAY_INC_LO, f
 	goto	MainLoop
 
 Decay1CV:
@@ -2625,6 +2629,9 @@ D1CalcInc:
 	incf	FSR0H, f			; Move to lo table
 	movf	INDF0, w
 	movwf	DECAY_INC_LO
+	lsrf    DECAY_INC_HI, f			; double the decay times
+	rrf     DECAY_INC_MID, f
+	rrf     DECAY_INC_LO, f
 	goto	MainLoop
 	
 ; Update the Sustain CV
@@ -2762,6 +2769,9 @@ R0CalcInc:
 	incf	FSR0H, f			; Move to lo table
 	movf	INDF0, w
 	movwf	RELEASE_INC_LO
+	lsrf    RELEASE_INC_HI, f			; double the release times
+	rrf     RELEASE_INC_MID, f
+	rrf     RELEASE_INC_LO, f
 	goto	MainLoop
 
 ; Update the Release CV
@@ -2813,6 +2823,9 @@ R1CalcInc:
 	incf	FSR0H, f			; Move to lo table
 	movf	INDF0, w
 	movwf	RELEASE_INC_LO
+	lsrf    RELEASE_INC_HI, f			; double the release times
+	rrf     RELEASE_INC_MID, f
+	rrf     RELEASE_INC_LO, f
 	goto	MainLoop
 	
     ; ***** Miscellaneous Routines*********************************************
