@@ -90,6 +90,11 @@
 ;                 also tweak ADCC parameters
 ;2018-07-28 ozh - double the Decay and Release times
 ;2018-07-28 ozh - added DUMMYVAR cuz something was overwriting "TIME_CV" at that location
+;2018-07-29 ozh - TIME_CV is still getting corrupted (for EG1), so I've replaced 
+;   movfw   TIME_CV
+;with
+;   movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
+; this does not fix the underlying issue, but it destroys the symptom
 ;firmware revision (1.2)	
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -2261,6 +2266,7 @@ Main:
 ;	clrf	RELEASE1_CV
 	clrf	TIME_CV				; Default to no time modulation
 	clrf	MODE_CV				; Default to standard ADSR, no looping
+	clrf	FLAGS				; since we commented out the MODE_CV, we have to set INIT the FLAGS (no LFO, no LOOP)
 	clrf	STAGE
 	; Clear the Phase Accumulator
 	clrf	PHASE_LO
@@ -2463,7 +2469,7 @@ A0Active:
 A0CalcInc:
 	movlb	D'0'
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
-	movfw	TIME_CV
+	movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
 	subwf	ADC_VALUE, w   ;  ATTACK_CV, w
 	btfss	BORROW
 	movlw	D'0'				; If value is <0, use minimum
@@ -2513,7 +2519,7 @@ A1Active:
 A1CalcInc:
 	movlb	D'2'		; Bank 2
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
-	movfw	TIME_CV
+	movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
 	subwf	ADC_VALUE, w
 	btfss	BORROW
 	movlw	D'0'				; If value is <0, use minimum
@@ -2566,7 +2572,7 @@ D0Active:
 D0CalcInc:
 	movlb	D'0'
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
-	movfw	TIME_CV
+	movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
 	subwf	ADC_VALUE, w
 	btfss	BORROW
 	movlw	D'0'				; If value is <0, use minimum
@@ -2619,7 +2625,7 @@ D1Active:
 D1CalcInc:
 	movlb	D'2'		; Bank 2
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
-	movfw	TIME_CV
+	movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
 	subwf	ADC_VALUE, w
 	btfss	BORROW											    
 	movlw	D'0'				; If value is <0, use minimum
@@ -2759,7 +2765,7 @@ R0Active:
 R0CalcInc:
 	movlb	D'0'
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
-	movfw	TIME_CV
+	movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
 	subwf	ADC_VALUE, w
 	btfss	BORROW
 	movlw	D'0'				; If value is <0, use minimum
@@ -2813,7 +2819,7 @@ R1Active:
 R1CalcInc:
 	movlb	D'2'		; Bank 2
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
-	movfw	TIME_CV
+	movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
 	subwf	ADC_VALUE, w
 	btfss	BORROW
 	movlw	D'0'				; If value is <0, use minimum
