@@ -1050,7 +1050,7 @@ WriteByteHiWait:
 WriteByteLoWait:
 	btfss	SSP2STAT, BF		; Wait while it sends
 	goto	WriteByteLoWait	
-	
+	; note: we can't do this test later because xmit must finish before taking ~CS high
 	; end of write
 	movlb D'0'		; PORTB
 	bsf   NOT_CS	; Take ~CS high
