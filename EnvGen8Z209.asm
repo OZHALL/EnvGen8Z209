@@ -2641,9 +2641,9 @@ D1CalcInc:
 	incf	FSR0H, f			; Move to lo table
 	movf	INDF0, w
 	movwf	DECAY_INC_LO
-	lsrf    DECAY_INC_HI, f			; double the decay times
-	rrf     DECAY_INC_MID, f
-	rrf     DECAY_INC_LO, f
+;	lsrf    DECAY_INC_HI, f			; double the decay times
+;	rrf     DECAY_INC_MID, f
+;	rrf     DECAY_INC_LO, f
 	goto	MainLoop
 	
 ; Update the Sustain CV
@@ -2781,9 +2781,9 @@ R0CalcInc:
 	incf	FSR0H, f			; Move to lo table
 	movf	INDF0, w
 	movwf	RELEASE_INC_LO
-	lsrf    RELEASE_INC_HI, f			; double the release times
-	rrf     RELEASE_INC_MID, f
-	rrf     RELEASE_INC_LO, f
+;	lsrf    RELEASE_INC_HI, f			; double the release times
+;	rrf     RELEASE_INC_MID, f
+;	rrf     RELEASE_INC_LO, f
 	goto	MainLoop
 
 ; Update the Release CV
@@ -2835,9 +2835,9 @@ R1CalcInc:
 	incf	FSR0H, f			; Move to lo table
 	movf	INDF0, w
 	movwf	RELEASE_INC_LO
-	lsrf    RELEASE_INC_HI, f			; double the release times
-	rrf     RELEASE_INC_MID, f
-	rrf     RELEASE_INC_LO, f
+;	lsrf    RELEASE_INC_HI, f			; double the release times
+;	rrf     RELEASE_INC_MID, f
+;	rrf     RELEASE_INC_LO, f
 	goto	MainLoop
 	
     ; ***** Miscellaneous Routines*********************************************
