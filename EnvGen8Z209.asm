@@ -95,9 +95,17 @@
 ;with
 ;   movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
 ; this does not fix the underlying issue, but it destroys the symptom
-;firmware revision (1.2)
+;
 ;2018-08-01 ozh - now that the TIME_CV is fixed, I have commented out the "double D & R time" patch.  
 ;                 All times are in a good range which nicely matches the DOTCOM times.
+;2018-08-02 ozh - init PREV_WORK_xx, so that DACs output 0V one time initially
+;
+; also implement this logic so that we can have two dual ADSR with unique I2C addresses
+;   if RE3 is 0 (jumper (from pin 1 (RE3) to 3 (GND) of ICSP ) is attached), then increment the address by 1
+;   w/o jumper the pin is at +5v because of the weak pullup WPUE
+;
+; firmware revision (1.2)
+;
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -114,8 +122,11 @@
  __CONFIG _CONFIG1, _FEXTOSC_OFF & _RSTOSC_HFINT1 & _CLKOUTEN_OFF & _CSWEN_ON & _FCMEN_ON
 ; CONFIG2
 ; __config 0x3FFF
- __CONFIG _CONFIG2, _MCLRE_ON & _PWRTE_OFF & _LPBOREN_OFF & _BOREN_ON & _BORV_LO & _ZCD_OFF & _PPS1WAY_ON & _STVREN_ON
+ __CONFIG _CONFIG2, _MCLRE_OFF & _PWRTE_OFF & _LPBOREN_OFF & _BOREN_ON & _BORV_LO & _ZCD_OFF & _PPS1WAY_ON & _STVREN_ON
+ ; use pin 1 ... we don't need a reset
+ ;__CONFIG _CONFIG2, _MCLRE_ON & _PWRTE_OFF & _LPBOREN_OFF & _BOREN_ON & _BORV_LO & _ZCD_OFF & _PPS1WAY_ON & _STVREN_ON
 ; CONFIG3
+
 ; __config 0x3F9F
  __CONFIG _CONFIG3, _WDTCPS_WDTCPS_31 & _WDTE_OFF & _WDTCWS_WDTCWS_7 & _WDTCCS_SC
 ; CONFIG4
@@ -130,7 +141,10 @@
 ;	DEFINE STATEMENTS
 ;-------------------------------------
 
-; Useful bit definitions for clarity	
+; Useful bit definitions for clarity
+#define I2C1_SLAVE_ADDRESS_JUMPER PORTE,3 ;RE3, pin connects to ICSP header (with a pullup resistor).  
+                                          ;If pin 1 (RE3) & 3 (GND) are connected, pin is pulled low.
+#define INTERRUPT_IND   PORTC,6         ; RA6 - LOW indicates interrupt is happening
 #define NOT_CS		PORTB,5         ; RB5 
 #define BIT0 		b'00000001'
 #define BIT1 		b'00000010'
@@ -489,6 +503,7 @@ InterruptEnter:
 CheckOverrun:
 	; Check for overrun (this is tested)
 	movlb	D'0'				; Bank 0 ;D'2' ; Bank 2 ;
+;	bcf	INTERRUPT_IND ; pin 17 (Sustain #2) - track when interrupt happens
 	; an overrun is indicated by the #7 LED (of 8,i.e. sustain for second EG) being on.
 	btfsc	OVERRUN_FLAG,0	; if last LED is set (indicating an overrun)
 	bsf	LATC,6		; turn on next to last LED (permanently)
@@ -1069,6 +1084,7 @@ InterruptExit:
 	goto	IntLoop
 FinishedEG1:
 	movlb	D'0'				; Bank 0
+;	bsf	INTERRUPT_IND ; pin 17 - track when interrupt ends
 	; second toggle for the CheckOverrun
 	movlw	BIT0
 	xorwf	OVERRUN_FLAG,f		; XOR toggles the bit 
@@ -2303,6 +2319,9 @@ Main:
 	; Clear the output buffers
 	clrf	OUTPUT_HI
 	clrf	OUTPUT_LO
+	movlw   0x01			;init PREV_WORK_xx, so that it outputs 0 one time initially
+	movwf	PREV_WORK_HI
+	movwf	PREV_WORK_LO
 	; Set up the ADC channel scan (to roll over)
 	movlw	0x07
 	movwf	ADC_CHANNEL			; Start with ATTACK_CV
@@ -2886,7 +2905,9 @@ Init_Ports:
 	movwf WPUB  ;    WPUB = 0xE0;
 	clrf WPUA   ;    WPUA = 0x00;
 	clrf WPUC   ;    WPUC = 0x00;
-
+	;for Pin 1, RE3 /MCLR set a weak pullup
+	movlw b'00001000'
+	movwf WPUE  ; set the WPUE for a default of HI
 ;   open drain
 ;	movlb d'30'
 	clrf ODCONA ;    ODCONA = 0x00;
@@ -3107,8 +3128,23 @@ Init_I2C:
 	movwf	SSP1MSK
 ;    // SSPADD 16; 
 ;    SSP1ADD = (I2C1_SLAVE_ADDRESS << 1);  // adjust UI address for R/nW bit
+	movf	BSR,w			; this bank "preservation" while accessing PORTC works, but uses 6 cycles
+	movwf	TEMP_BSR
+	; begin work in this bank
 	movlw	I2C1_SLAVE_ADDRESS
+	movlb	D'0' ; Bank 0
+; if RE3 is 0 (jumper (from pin 1 (RE3) to 3 (GND) of ICSP ) is attached), then increment the address by 1
+; w/o jumper the pin is at +5v because of the weak pullup WPUE
+	btfss	I2C1_SLAVE_ADDRESS_JUMPER
+	incf	WREG
 	lslf	WREG
+	; end work in this bank
+	movwf	TEMP		;preserve W
+	; now restore bank
+	movf	TEMP_BSR,w
+	movwf	BSR		;restore bank
+	movfw	TEMP		;restore W
+        ;
 	movwf	SSP1ADD
 ;    // clear the slave interrupt flag
 	movlb	D'14'
