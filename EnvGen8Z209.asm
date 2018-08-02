@@ -95,7 +95,9 @@
 ;with
 ;   movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
 ; this does not fix the underlying issue, but it destroys the symptom
-;firmware revision (1.2)	
+;firmware revision (1.2)
+;2018-08-01 ozh - now that the TIME_CV is fixed, I have commented out the "double D & R time" patch.  
+;                 All times are in a good range which nicely matches the DOTCOM times.
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
