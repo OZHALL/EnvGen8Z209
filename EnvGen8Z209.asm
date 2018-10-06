@@ -1052,7 +1052,9 @@ DACOutput:
 	; prepare to take 16 bits down to 12 bits
 	movf	OUTPUT_HI,w
 	movwf	WORK_HI
-	
+
+;Performance Logic
+;   this performance logic works, we do need it 
 	; see if the values WREG and Previous HI values are the same
 	clrf	TEMP_W_INTR
 	xorwf	PREV_WORK_HI,0	   ; compare the two if same, XOR results in 0
