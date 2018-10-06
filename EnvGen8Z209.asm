@@ -106,6 +106,10 @@
 ;
 ; firmware revision (1.2)
 ;
+;2018-10-06 ozh - move the gate and trigger "parsing" code to the beginning of the
+;                 interrupt routine.  Now the "slow fader response" is better.
+;                 there is still a delay, but at 39 Hz, the faders do actually respond.
+;
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -542,21 +546,9 @@ TMR2ISR:
 
 ;EndTest:
 	; end test
-
-;default - DAC0
-	movlw	DAC0		;start with DAC0 ;DAC1;
-	bcf	DAC_NUMBER,7    ; clear bit 7 of DAC_NUMBER 
-IntLoop:
-	btfss	WREG,7		; check DAC0 or DAC1
-	goto	ILContinue	; if bit 7 was set, this goto gets skipped
-	; set up for DAC1
-	movlb	D'2'		; Bank 2 - EG1 (128 byte banks)
-	bsf	DAC_NUMBER,7     ; set bit 7 of DAC_NUMBER 
-ILContinue:	;process EG0 or EG1
-    
-	; If we're in LFO mode, we can ignore the GATE and TRIGGER inputs
-	btfsc	LFO_MODE
-	goto	GenerateEnvelope
+;
+;   First do common code (not bank switched)
+;
 
 ;---------------------------------------------------------
 ;	Test and debounce the digital inputs
@@ -573,14 +565,15 @@ ILContinue:	;process EG0 or EG1
 	xorwf	DEBOUNCE_HI, f		; HI+ = HI XOR LO
 	comf	DEBOUNCE_LO, f		; LO+ = ~LO
 	; See if any changes occured
-	movf	BSR,w			; this bank "preservation" while accessing PORTC works, but uses 6 cycles
-	movwf	TEMP_BSR_INTR
-	movlb	D'0' ; Bank 0
+	; bank preservation not needed.  We're in bank 1 only
+;	movf	BSR,w			; this bank "preservation" while accessing PORTC works, but uses 6 cycles
+;	movwf	TEMP_BSR_INTR
+;	movlb	D'0' ; Bank 0
 	movfw	PORTC				; Get current data from GATE & TRIG inputs
-	movwf	TEMP_W_INTR
-	movf	TEMP_BSR_INTR,w
-	movwf	BSR
-	movfw	TEMP_W_INTR
+;	movwf	TEMP_W_INTR
+;	movf	TEMP_BSR_INTR,w
+;	movwf	BSR
+;	movfw	TEMP_W_INTR
 	xorwf	STATES, w			; Find the changes
 	; Reset counters where no change occured
 	andwf	DEBOUNCE_LO, f
@@ -595,9 +588,73 @@ ILContinue:	;process EG0 or EG1
 	xorlw	D'255'
 	; Now a 1 in W represents a 'switch just changed'
 	movwf	CHANGES				; Store the changes
+	movwf	TEMP_W_INTR  
 	; Update the changes to the keyboard state
 	xorwf	STATES, f
+	; store these same values in bank 2
+	movlb	D'2' ; Bank 2
+	movwf   STATES
+	movf    TEMP_W_INTR,w
+	movwf   CHANGES
+	movlb	D'0' ; Bank 0
 	
+;   Begin bank switched code
+;
+;default - DAC0
+	movlw	DAC0		;start with DAC0 ;DAC1;
+	bcf	DAC_NUMBER,7    ; clear bit 7 of DAC_NUMBER 
+IntLoop:
+	btfss	WREG,7		; check DAC0 or DAC1
+	goto	ILContinue	; if bit 7 was set, this goto gets skipped
+	; set up for DAC1
+	movlb	D'2'		; Bank 2 - EG1 (128 byte banks)
+	bsf	DAC_NUMBER,7     ; set bit 7 of DAC_NUMBER 
+ILContinue:	;process EG0 or EG1
+    
+	; If we're in LFO mode, we can ignore the GATE and TRIGGER inputs
+	btfsc	LFO_MODE
+	goto	GenerateEnvelope
+
+;;---------------------------------------------------------
+;;	Test and debounce the digital inputs
+;;---------------------------------------------------------
+;; Do Scott Dattalo's vertical counter debounce (www.dattalo.com)
+;; This could debounce eight inputs, but I'm using only two:
+;; RC0 Trigger/Gate
+;; RC1 Trigger/Gate
+;	
+;; Z209 consolidate Gate & Trigger & use RC0 for channel 0, RC1 for channel 1
+;	
+;	; First, increment the debounce counters
+;	movfw	DEBOUNCE_LO	
+;	xorwf	DEBOUNCE_HI, f		; HI+ = HI XOR LO
+;	comf	DEBOUNCE_LO, f		; LO+ = ~LO
+;	; See if any changes occured
+;	movf	BSR,w			; this bank "preservation" while accessing PORTC works, but uses 6 cycles
+;	movwf	TEMP_BSR_INTR
+;	movlb	D'0' ; Bank 0
+;	movfw	PORTC				; Get current data from GATE & TRIG inputs
+;	movwf	TEMP_W_INTR
+;	movf	TEMP_BSR_INTR,w
+;	movwf	BSR
+;	movfw	TEMP_W_INTR
+;	xorwf	STATES, w			; Find the changes
+;	; Reset counters where no change occured
+;	andwf	DEBOUNCE_LO, f
+;	andwf	DEBOUNCE_HI, f
+;	; If there is a pending change and the count has rolled over,
+;	; then the key has been debounced
+;	xorlw	D'255'				; Invert the changes
+;	iorwf	DEBOUNCE_HI, w		; If count is 0, both
+;	iorwf	DEBOUNCE_LO, w		; HI and LO are 0
+;	; Any bit in W that is clear at this point means that the
+;	; input has changed and the count rolled over.
+;	xorlw	D'255'
+;	; Now a 1 in W represents a 'switch just changed'
+;	movwf	CHANGES				; Store the changes
+;	; Update the changes to the keyboard state
+;	xorwf	STATES, f
+;	
 ; Test the GATE and TRIGGER Pins for changes
 ;--------------------------------------------
 ; The logic here is straight-forward. If the Trigger goes high, the envelope

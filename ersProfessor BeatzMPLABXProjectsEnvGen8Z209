@@ -1,0 +1,633 @@
+[33mcommit b7d9daa3f7931b0f910ec76e1ee695db31bf9440[m[33m ([m[1;36mHEAD -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Thu Aug 2 18:45:54 2018 -0500
+
+    Pin 1 RE3 is input - used for I2C address jumper
+    
+    implemented this logic so that we can have two dual ADSR with unique I2C addresses
+       if RE3 (pin 1) is 0 (jumper (from pin 1 (RE3) to 3 (GND) of ICSP ) is attached), then increment the address by 1
+       w/o jumper the pin is at +5v because of the weak pullup WPUE
+
+[33mcommit d409054aa09cd4d9684e496f2586585aabd895ce[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Thu Aug 2 14:56:44 2018 -0500
+
+    add comment for last change
+    
+    i.e. remove double times
+
+[33mcommit 04b9bcc7363f9ec03221f7862d062bf18493dd90[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Thu Aug 2 14:52:53 2018 -0500
+
+    Revese the double D & R times
+    
+    Now that the "TimeCV" is not shortening the Decay & Rel times, they are in a range which nicely matches the DOTCOM ADSR.
+
+[33mcommit ec8260ef192310a30ba9d02bc2850cf6228fadbe[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Mon Jul 30 07:55:10 2018 -0500
+
+    Add a comment
+    
+    r.e. doing wait for SPI buffer full
+
+[33mcommit 286151d2cda7f289d3f0d44cbfca3d66880b8e89[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jul 29 16:04:32 2018 -0500
+
+    MODE_CV fixl & TIME_CV patch
+    
+    MODE_CV updates FLAGS.   I stopped scanning for MODE_CV and TIME_CV but had not initialized FLAGS!!!  I fixed that.
+    TIME_CV is still non-zero for EG1 (vs EG0).  I have replaced movfw      TIME_CV with movlw 0 .  That permanently avoids this issue, but I still don't know why this happens, and it may come back to bite me.
+
+[33mcommit d590abf82cd263e5ecac21dbf0ca1c38913d76fb[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sat Jul 28 14:20:56 2018 -0500
+
+    Another bandaid tweak to variables v1.2 July 28 2018
+    
+    move PREV_WORK_HI and _LO to end
+
+[33mcommit fd222c195a26e43f1d83ed7bb2e31c534c566135[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sat Jul 28 12:59:09 2018 -0500
+
+    Fix Memory overwrite issue V1.2
+    
+    Time_CV was getting overwritten, so (as a bandaid) add a dummy variable to prevent that.
+
+[33mcommit 8abba3f686cf8624a78100d568b5022496d616a1[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sat Jul 28 09:42:26 2018 -0500
+
+    Double the Decay and Release times
+    
+    Double the Decay and Release times with this code (thx Tom W.):
+            lsrf    DECAY_INC_HI, f                 ; double the decay times
+            rrf     DECAY_INC_MID, f
+            rrf     DECAY_INC_LO, f
+
+[33mcommit 6ae2a5ab09353f58935b72aea087b76077f3005c[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jul 22 12:58:49 2018 -0500
+
+    Add some code which is not now used
+    
+    Add code to skip reading Sustain when we are in the sustain stage.  This works, but is commented out now.
+    update init_ADCC values, but we are NOT currently using Init_ADCC because it does not work.
+
+[33mcommit 681ff44d5841a8051c4beb110d471840be258c80[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jul 22 08:18:19 2018 -0500
+
+    Reverse the gate indicator and tweak ADCC parms
+    
+    Reverse the Gate indicator, gate ON = LED off, so that, at rest, all LEDs are on.
+    Tweak ADCC parameters for performance/accuracy.
+
+[33mcommit e1c0c0dd2baca1827ee464567ba09f2c747be41e[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jul 15 11:19:58 2018 -0500
+
+    Add version number 1.1
+    
+    just added a comment to name this v1.1
+
+[33mcommit 3f75487631e114c938b16f832d256c0e466fa7ab[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jul 15 11:08:53 2018 -0500
+
+    Another SPI clock tweak
+    
+     tweak SPI2 (SSP2) clock to be Fosc/12 (2.67 MHz).  Greatly improved fader responsiveness
+
+[33mcommit 3a3b93a0afdb4ffa36af4cd0b4753eaf78189f8e[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jul 15 10:18:30 2018 -0500
+
+    Increase SPI clock to Fosc/16
+    
+    Increased SPI clock to Fosc/16 (2Mhz).  Could not do Fosc/4.  Perhaps  becuase of the 4us settling time.  Much more responsive Faders now.
+
+[33mcommit 86afdd730b576009f58d69eac2adc3312fe51410[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jun 17 19:15:46 2018 -0500
+
+    Fixed varying sustain
+    
+    I backed out the init_ADCC changes.  This will require more time/testing.  This addressed the "Sustain varies wildly (in a S/H fashion!!)" problem.
+    This is version 1.0. 6/17/18 ozh
+
+[33mcommit c4a3957a4349fe248a14b728a39d90d15ff43e57[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jun 17 17:18:45 2018 -0500
+
+    Not done Yet!
+    
+    Sustain varies wildly (in a S/H fashion!!) when is it at full level.
+
+[33mcommit 18bfc916de508b4e7c830b2a4790d60402ffa4e2[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jun 17 17:12:36 2018 -0500
+
+    Remove Punch
+    
+    The punch code caused the second EG to become an AR (I'm not sure why).  So, I've disabled it.
+    We're done.  This is version 1.0
+
+[33mcommit 814131fc0f74760fdb9b4a3196a24828cf9debc7[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jun 17 16:46:20 2018 -0500
+
+    set bank before TIME_CV
+    
+    perhaps don't need to do this, just in case
+
+[33mcommit 71c274b8a3a7b2c21de087030768885aa2700c1a[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jun 17 12:39:49 2018 -0500
+
+    add comments
+    
+    comments
+
+[33mcommit e4aa7383d38054b91549ca3567b4b74c4801487a[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sat Jun 16 22:34:09 2018 -0500
+
+    Update ADC config
+    
+    Updated ADC config for greater reliability of the sampled fader values.  Also, I'm zeroing out the LSBit of ADC_VALUE for the Sustain faders.  Max sustain will be 0xFE
+
+[33mcommit 93551dff9d4257858818017cefa102e2db09ab3d[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sat Jun 16 20:51:04 2018 -0500
+
+    Resolved init_SPI2 config issues
+    
+    See that subroutine for documented details.
+
+[33mcommit b712f85a9aff1bfbc6a8ee6e83946365be696f20[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sat Jun 16 19:05:16 2018 -0500
+
+    SSP2CON1 Config Changes
+    
+    Something has gone South (today?).   Changes seem to be an improvement (in speed).  But I'm losing the envelope.  Not sure why.  An older version (not sure which version) is working on the alternate envelope.
+
+[33mcommit db3b50016850e1f9db9c67e295889e5abb511ba7[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sat Jun 16 15:12:31 2018 -0500
+
+    Refine the SPI init and tidy up
+    
+    Refine SPI configuration (Init_SPI2).  Tidy up comments.  Comment out unused code.
+
+[33mcommit 95be61f4a6e90c31674ad34aad28bd391a91e7cb[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Fri Jun 15 21:17:07 2018 -0500
+
+    Calibrate Punch and performance
+    
+    Enabled punch, calibrated it (to 5ms of hold).  Also a couple of performance tweaks.
+
+[33mcommit cd172457265b596f35cdde7a0b3595f6db737d07[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Thu Jun 14 20:22:55 2018 -0500
+
+    Put FaderTakeoverFlags in common memory
+    
+    to skip a bunch of Bank switching
+
+[33mcommit 1d55dff44d5e62fa13fbc08c6fe6e5c12c550d23[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Thu Jun 14 08:18:07 2018 -0500
+
+    Optimization around FaderTakeoverFlags test
+    
+    No need to parse channel and populate FADERACTIVE_FLAG, just test the FaderTakeoverFlags directly, since we know what channel we're working with.
+
+[33mcommit 087ef683cc432e09812e04bcc81a203e718edf7a[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Tue Jun 12 19:22:19 2018 -0500
+
+    LEDs are working correctly now
+    
+    Save this milestone.
+
+[33mcommit d60d9f6d28d58a3a02708da22919db9ee6dccb0c[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Tue Jun 12 08:58:01 2018 -0500
+
+    Dim functionality not fully tested
+    
+    Coded but still a bug or two.
+
+[33mcommit 1acd842a24d6c8cc8a32c03e5f3d68c6f755cd1b[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Mon Jun 11 21:35:04 2018 -0500
+
+    Setting FADERACTIVE_FLAG works now
+    
+    Setting the FADERACTIVE_FLAG before processing the ADC_VALUE for each fader works correctly now.
+
+[33mcommit becde10c6439b8b4b569b99034172b20128b1f0c[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Mon Jun 11 09:19:42 2018 -0500
+
+    Add LED indicators when takeover happens
+    
+    This is mostly working.  Could be a little smoother.  Need to set LEDs on initially.  Need to manage takeover vs gate indicator.
+
+[33mcommit 6a1e18dc0c2915afaa81be9fe37078629848cfc3[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jun 10 21:02:16 2018 -0500
+
+    Takeover logic coded, not yet debugged
+    
+    Ever closer to a working system.
+
+[33mcommit af60ba9b82bca11824b8cc77fc270e2b9ee781e6[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jun 10 18:42:12 2018 -0500
+
+    Load (I2C write) logic is working!
+    
+    Still have to add more code to manage fader takeover, but the basic "load from programmer" functionality is working !!!
+
+[33mcommit 175e788f1eb7d1bca77601ab73eba8addd80007b[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jun 10 17:21:59 2018 -0500
+
+    Attack is now updated from Programmer
+    
+    The Attack parameter is now updated from the Matrix Switch Programmer module.  It worked several times in a row, the stopped updating.  Next, port changes to other fader processes.
+
+[33mcommit aa9c6d0f32f61564cd001a9dcf2b7a00545b56e5[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun Jun 10 12:45:05 2018 -0500
+
+    Add support ofr I2C control of LEDs
+    
+    Respond to I2C LED on/off message.  Note: DIM not yet supported.
+
+[33mcommit 2dd527c7520933d1b092ff175b5aa49668644971[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Fri Jun 8 20:38:55 2018 -0500
+
+    Code & Test Arbitration
+    
+    If fader is active, update model  and increment from fader.  If fader is not active, update increment from model, not fader.
+
+[33mcommit 9bee1c2f973ad200532e1dde6356650e7361ca21[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Thu Jun 7 08:54:08 2018 -0500
+
+    Mode is correctly parsed
+    
+    The I2C address is working correctly.  The mode is now being correctly parsed.  Next, verify that we're doing the correct thing with the incoming data (if we're getting it all)
+
+[33mcommit 902f48fb91a5b5805f44601ab6462e060b365f87[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sat Jun 2 17:34:45 2018 -0500
+
+    Add Comments
+
+[33mcommit 345c60020f7f4ad6e7bfa23a5b7752d5945e2c87[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sat Jun 2 13:34:58 2018 -0500
+
+    Debugged FADERACTIVE_FLAG code
+    
+    Added code to test the FADERACTIVE_FLAG and debugged it.
+
+[33mcommit f75445a6221237acb6fdae795ff2b7304156d544[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Fri Jun 1 20:59:56 2018 -0500
+
+    Rework MainLoop
+    
+    First, rework to put the common code at the top of the loop to:
+    increment the ADC_CHANNEL
+    do conversion (into ADC_VALUE)
+    extract the  FADERACTIVE_FLAG and
+    MODEL_VALUE for later evaluation.
+    more yet to do, but this change is done.  Now evaluate those values in the dedicated routines for A/D/S/R
+
+[33mcommit 3ede03cb389090d6d2f8b7851a92b01868f8d35c[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Fri Jun 1 08:16:47 2018 -0500
+
+    I2C Read Faders slave code working
+    
+    yes it is!
+
+[33mcommit e54dfb5fa7fa761bfa343059bec1b1190ac42e0b[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Thu May 31 16:30:56 2018 -0500
+
+    Marshall fader data for I2Cf
+    
+    When we get a read request via I2C, copy the data from ATTACK_CV to an array in bank 0.
+    Note: code is untested.  We have a known good Master (702 MS 16x16) but no interrupt is being generated.
+
+[33mcommit 8a123c4a4e3307a2c95ee299cc4a17150d070844[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Tue May 29 20:12:11 2018 -0500
+
+    Finished I2C Interrupt code
+    
+    It is untested.  Also, we still have code in Main to write to hook the "model" into the existing variable structure.
+
+[33mcommit a39742f75c7e0aa8c7a2b5459d8574a95af6bde5[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Tue May 29 06:35:29 2018 -0500
+
+    Begin to add I2C support
+    
+    * * * INCOMPLETE * * *
+    Add I2C comms from the programmer modules to support load/save of presets.  This is a port from working C code.  So far I've added interrupts support and parsing of messages.
+
+[33mcommit bdff7d1a205e1763abb5077e1162b721d0d25488[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun May 27 15:12:10 2018 -0500
+
+    New Lookup Tables
+    
+    Tom Wiltshire gave me updated lookup tables.  They match the 22kHz ( PR2 = 0x16) refresh (sample) rate.
+    Attack time is now sub-millisecond!!!
+
+[33mcommit 57e8308aa33a68b6ab16645e661145cba777261e[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun May 27 14:15:50 2018 -0500
+
+    Party Lights
+    
+    added "PartyLights" - do a chase on the LEDS 4 times at each reboot
+
+[33mcommit 8911004a7bfa21811cb02feba58ae9b316538574[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun May 27 11:24:13 2018 -0500
+
+    Tighten up interrupt period
+    
+    Changed PR2 - interrupt period register to get a refresh (sample) rate of 23kHz with two envelopes.
+
+[33mcommit 0118657dbaa9b2b2ad1be2dd27fee51a6ed0e5a3[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun May 27 09:36:43 2018 -0500
+
+    Skip output if values are the same
+    
+    In DACOutput, check to see if the calculated value is the same as the previous calculated valued.  If so, skip the DAC update.   This gives time back to the main loop for processing faders.  It's a noticable difference in "user experience"
+
+[33mcommit 6b116c248c0d16e3a324e500902fe0dc350750f4[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sun May 27 07:09:31 2018 -0500
+
+    Revert "Does NOT work"
+    
+    This reverts commit cab511d9aad8bb6508aa948368b9f8fa25162263.
+
+[33mcommit cab511d9aad8bb6508aa948368b9f8fa25162263[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Sat May 26 10:30:49 2018 -0500
+
+    Does NOT work
+    
+    I'm just saving this so I can get back to it
+
+[33mcommit d3aaa26b2471fd9db85d1867038797e247bc8a4d[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Fri May 25 19:52:13 2018 -0500
+
+    Double Interrupt time
+    
+    I just added a descriptive update of the previous change.
+
+[33mcommit ca2c25d9ac10965bf67dcb76b28cefe5f95f7d41[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Thu May 24 18:35:35 2018 -0500
+
+    Half the TMR2 clock for more INT time
+    
+    I  adjustest the TMR2 prescale from /8 to /16 so that interrupts would occur only half as often.  This allowed enough time for both envelopes to be serviced!  The dual EGs appear to work now!!!
+
+[33mcommit 8c9d2069fc0b552efa4523d23ca066a366a3d31c[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Thu May 24 08:30:42 2018 -0500
+
+    add a delay to try to force an overrun
+    
+    I think I have forced an overrun, but the LED is not  turning on, the way I expected.
+
+[33mcommit c13498f024c8c0400ba52b9c52c4ef62c321aee6[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Wed May 23 22:09:04 2018 -0500
+
+    Corrected Punch and Expo/Linear
+    
+    Punch & Expo/Linear were set up for PORTA.   We don't support that hardware input for the DUAL EG, so I set it up as hard coded no-punch and EXPO.
+
+[33mcommit 810f892a776e696931dd88a51e4cc23eeac0830a[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Wed May 23 19:13:23 2018 -0500
+
+    Implement second gate
+    
+    I believe the two gates are working correctly now.   Still more work to do getting both EGs working.
+
+[33mcommit 02831bb5a511f9bcbed5c0a4eba18a05b99dba6d[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Wed May 23 08:21:10 2018 -0500
+
+    Gate0 is firing EG1
+    
+    Only sustain is working from the 2nd set of controls.
+
+[33mcommit 290117e6f18a730276cadb9ea40c11c07c109a87[m
+Author: O.Z. Hall <o.z.hall@att.net>
+Date:   Tue May 22 21:30:43 2018 -0500
+
+    Set Up Bank Switching with 2 sustains
+    
+    First Sustain controls EG0 (Bank 0)
+    Second Sustain controls EG1 (Bank 2)
+    much more work to do
+
+[33mcommit e60ce6cfd7e070bf58269dfaf0215b655f3d01e7[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Fri May 18 08:38:47 2018 -0500
+
+    Begin to convert to bank switching
+    
+    Initial conversion to bank switching.  EG0 model is mapped to bank 0, 0x20 (i.e. 0x020), which is the same as the "original" variables.  EG1 model is bank 2, 0x20 (i.e. 0x120).
+    EG0 still works.  The bank switching is completely untested.  Also need to do work with gates for this to work.
+
+[33mcommit 9b1964f5f035837d2f1228466550f7e86ce4b9a1[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Tue May 15 19:56:25 2018 -0500
+
+    More Clean Up - EG0 still works
+    
+    I can call CopyToModel successfully, but not from within the Interrupt routine.
+
+[33mcommit 1eef6d7b236bd80ef5a9094b04c3602ca2184a92[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Tue May 15 18:40:49 2018 -0500
+
+    Save FSR0 in ISR
+    
+    FSR0 is used in the main routine.  FSR1 in the interrupt routine.  Preserve FSR0 at beginning of interrupt rtn (ISR), so that it can be used in the ISR.  Restore it at the exit (retfie).    Also, move some variables  around.
+
+[33mcommit 4ec8cfdf616444af50f250a04a956710d534850d[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Mon May 14 20:12:46 2018 -0500
+
+    CopyToModel refinements
+    
+    As long as we don't call CopyToModel from w/in the interrupt, this works.
+
+[33mcommit db0ddcb5407f70a993dd5470e340212229caa526[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Sun May 13 20:42:53 2018 -0500
+
+    Init OVERRUN_FLAG
+    
+    also back out calls to copy model
+
+[33mcommit 417400369fe1edfdde490676598998623638f8f9[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Sun May 13 17:18:02 2018 -0500
+
+    Add ISR OVERRUN_FLAG
+    
+    detect if interrupt service routine has taken so long the the interrupt timer goes off before the first  ISR call has finisthed.
+
+[33mcommit ca0ea625768db3c0b81d2756879477fb74e9f98c[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Sun May 13 11:55:53 2018 -0500
+
+    Put model variables in banks 1 & 2
+    
+    Bank 0 - main variables
+    Bank 1 - EG0 model
+    Bank 2 - EG1 model
+
+[33mcommit a4ef989f21405d63ddf02f98ae37c6440bd1ad93[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Sat May 12 15:06:37 2018 -0500
+
+    Save Checkpoint - EG0 works
+    
+    This is a checkpoint with code added but disabled.  The EG0 works correctly.
+
+[33mcommit 8bc56c7cac428c2e92928a29a371515d76daf6cf[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Sat May 12 08:08:02 2018 -0500
+
+    Add Mem Copy routine
+    
+    copy EG specific variables to dedicated memory for two EGs.  This will be used for "context switchng" between EGs in the interrupt routine.
+
+[33mcommit 1fb41caba2fc5109381a4b96de826d8608dc817a[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Thu May 10 07:49:38 2018 -0500
+
+    Corrects from TW on release error
+    
+    This appears to be working cleanly for a single ADSR!!!
+
+[33mcommit 5abd63be1317291107330842eb80578b285fdbb3[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Wed May 9 21:21:21 2018 -0500
+
+    Delete Unused Code for Preset
+
+[33mcommit 3f81c65c1b550d04e3de04574fbd21f5e0d0b50c[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Wed May 9 20:18:26 2018 -0500
+
+    Added ADC input for A/D/S/R
+    
+    it works!
+
+[33mcommit de2c43db098987dd7f7725be7cdc237dccaa33ff[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Tue May 8 23:02:16 2018 -0500
+
+    Backed out "invert" - that was not needed
+    
+    still have a bug.  on Release, the value goes to max before subsiding
+
+[33mcommit 137bc3540779e8806d20479f2dc31b42f5773129[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Tue May 8 22:28:17 2018 -0500
+
+    Fixed 16 bit inverted Dacout
+    
+    I skipped the inversion.  Also, shifted the 16 bit value by 4 bits to get 12 bits.
+    We have a proper Attack/Decay/Sustain, but on release, the output ramps up to full value before going to zero.
+
+[33mcommit e980232f82f56795ce442b4b573aa2913b12d137[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Tue May 8 22:05:10 2018 -0500
+
+    preset envelope parameters
+    
+    This is sort of working with some preset envelope parameters.  I've put off the "input from faders" code till last.
+    There appears to be an "impedance mismatch" between my code (SPI out to DAC) and the rest of the ED EnvGen8 code.
+
+[33mcommit 85cde98cb089a7379af3f8aad2bacb624ca90c5b[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Tue May 8 08:27:42 2018 -0500
+
+    Interrupt Timer2 and Gate Input work
+    
+    LED 1 turns on when I press the GATE button.
+
+[33mcommit f59903930703b2befafea527b357909f2432bd10[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Mon May 7 22:18:05 2018 -0500
+
+    Fix org statements
+    
+    Firx org statements
+    Move my code above the lookup tables
+    Get LEDs working
+
+[33mcommit 1b0081a4be4613a6da8b948d14d8f56f0efb48fa[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Mon May 7 18:50:26 2018 -0500
+
+    First Modifications
+    
+    Add SPI based DAC output
+    Change pins to Z209 hardware
+
+[33mcommit c0fe18eebbe7af200109800cc99e5a01e74fd84f[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Mon May 7 18:48:44 2018 -0500
+
+    Initial Project
+
+[33mcommit 535118f99167b73a50b46d74149864c0c605271e[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Mon May 7 18:24:20 2018 -0500
+
+    Revert "Add MPLAB X Project Files"
+    
+    This reverts commit 3d627536cf2f80b5b485079cc20cddb394d4cf57.
+
+[33mcommit 3d627536cf2f80b5b485079cc20cddb394d4cf57[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Mon May 7 18:23:53 2018 -0500
+
+    Add MPLAB X Project Files
+
+[33mcommit db45439bb739cc4bcb5f6eca3d4a038e53a01b18[m
+Author: O.Z.Hall <o.z.hall@att.net>
+Date:   Mon May 7 18:16:08 2018 -0500
+
+    Initial commit
