@@ -591,6 +591,7 @@ TMR2ISR:
 	movwf	TEMP_W_INTR  
 	; Update the changes to the keyboard state
 	xorwf	STATES, f
+	movf    STATES,w                        ; get result back into W
 	; store these same values in bank 2
 	movlb	D'2' ; Bank 2
 	movwf   STATES
