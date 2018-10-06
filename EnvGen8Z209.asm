@@ -113,6 +113,9 @@
 ;                 Moved the trigger processing code to the beginning.  
 ;                 Fader response may be better, it appears to be functionally correct.
 ;
+;                 Moved the gate processing code to the beginning.  
+;                 Fader response may be better, it appears to be functionally correct.
+;
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -355,8 +358,9 @@
   ENDC
 ;   these are used only by Delay1Sec which is called by PartyLights before the main loop
 ;   the bank does not really matter, as long as they are out of the way of other variables
-  CBLOCK 0x05C
+  CBLOCK 0x05B
 	TRIGGERHIGH_FLAG				; a flag indicating that the trigger has just gone high	
+	GATELOW_FLAG
 	TEMP_2
 	TEMP_3
 	TEMP64			    ; only used by TestTakeover
@@ -369,66 +373,6 @@
 	;PREV_BYTE_FADER_VALUE[8]
 	PREV_BYTE_FADER_VALUE			; 8 bytes for the 8 faders
   ENDC
-  ;bank 2
-  CBLOCK 0x120	
-	; begin model for EG 1
-	; The current stage 
-	M1_STAGE	; 0=Wait, 1=Attack, 2=Punch, 3=Decay, 4=Sustain, 5=Release, 0=Wait
-	; The debounce counters for GATE and TRIGGER
-	M1_DEBOUNCE_HI
-	M1_DEBOUNCE_LO
-	M1_STATES						; The output state from the debounce
-	M1_CHANGES						; The bits that have altered
-	; The 24 bit phase accumulator
-	M1_PHASE_HI
-	M1_PHASE_MID
-	M1_PHASE_LO
-	; The 20 bit frequency increments
-	; These are stored separately for Attack, Decay, & Release
-	; Note that these increments have been adjusted to reflect
-	; changes due to TIME_CV, whereas the raw CVs haven't
-	M1_ATTACK_INC_LO
-	M1_ATTACK_INC_MID
-	M1_ATTACK_INC_HI
-	M1_PUNCH_INC_LO				; Punch stage is not variable
-	M1_PUNCH_INC_MID
-	M1_PUNCH_INC_HI
-	M1_DECAY_INC_LO
-	M1_DECAY_INC_MID
-	M1_DECAY_INC_HI
-	M1_RELEASE_INC_LO
-	M1_RELEASE_INC_MID
-	M1_RELEASE_INC_HI
-	; The current output level when an Attack or Release starts
-	M1_START_HI	
-	M1_START_LO
-	; The 12 bit output level
-	M1_OUTPUT_HI	
-	M1_OUTPUT_LO
-	
-	; The current control voltage(CV) values (8 bit)
-	M1_ATTACK_CV					; These first four aren't actually used any more
-	M1_DECAY_CV					; Instead we find a PHASE INC value and use that
-	M1_SUSTAIN_CV
-	M1_RELEASE_CV
-	
-	; The working storage for the interpolation subroutine
-	M1_INPUT_X_HI					; Two inputs, X and Y
-	M1_INPUT_X_LO
-	M1_INPUT_Y_HI
-	M1_INPUT_Y_LO
-	M1_CURVE_OUT_HI				; The final, interpolated, curve output
-	M1_CURVE_OUT_LO
-	; Working storage for the 10x10-bit multiply subroutine
-	M1_MULT_IN_HI
-	M1_MULT_IN_LO					; CURVE_OUT is the other input
-	M1_MULT_OUT_HI
-	M1_MULT_OUT_LO
-	
-	M1_PREV_WORK_HI
-	M1_PREV_WORK_LO
-	; end EG 1
- ENDC
 
 ; 0x70-0x7F  Common RAM - Special variables available in all banks
  CBLOCK 0x070
@@ -593,6 +537,7 @@ TMR2ISR:
 	xorwf	STATES, f
 	movlw   '0'
 	movwf   TRIGGERHIGH_FLAG		; reset flag
+	movwf   GATELOW_FLAG
 	movf    STATES,w                        ; get result back into W
 	; store these same values in bank 2
 	movlb	D'2' ; Bank 2
@@ -601,6 +546,7 @@ TMR2ISR:
 	movwf   CHANGES
 	movlw   '0'
 	movwf   TRIGGERHIGH_FLAG		; reset flag
+	movwf   GATELOW_FLAG
 	movlb	D'0' ; Bank 0
 	
 ;	
@@ -655,7 +601,54 @@ TestTrigger1:
 	
 TestTriggerEnd:
 	movlb	D'0' ; Bank 0
+
+TestGate:
+;	btfsc	BSR,1		    ; see if we are in bank 2 (0x02 = b'00000010')
+;	goto	TestGate1	    ; if so, service gate 1
 	
+	; Has GATE changed?
+	btfss	GATE_CHANGED
+;	goto	GenerateEnvelope
+	goto    TestGate1	    ; has not changed, check EG1 gate
+	
+	; GATE has changed, but has it gone low?
+; Z209 - we need to reverse this cuz my hardware inverts the gate input
+;	btfsc	GATE
+	btfss	GATE
+;	goto	GenerateEnvelope	; No, so skip
+	goto    TestGate1
+;	movf	BSR,w			; this bank "preservation" works
+;	movlb	D'0' ; Bank 0
+	bsf	GATE_LED0		; gate OFF = cut on LED ;bcf	GATE_LED0
+;	movwf	BSR
+;	goto	EndEnvelope
+	movlw	'1'
+	movwf	GATELOW_FLAG
+	
+TestGate1:
+	movlb	D'2' ; Bank 2
+	; Has GATE changed?
+	btfss	GATE1_CHANGED
+;	goto	GenerateEnvelope
+	goto    TestGateEnd
+	
+	; GATE has changed, but has it gone low?
+; Z209 - we need to reverse this cuz my hardware inverts the gate input
+;	btfsc	GATE
+	btfss	GATE1
+;	goto	GenerateEnvelope	; No, so skip
+	goto	TestGateEnd
+	movf	BSR,w			; this bank "preservation" works
+	movlb	D'0' ; Bank 0
+	bsf	GATE_LED1		; gate ON = cut off LED ;bcf	GATE_LED1
+	movwf	BSR
+        ;set variable to indicate that we need to go to EndEnvelope
+	movlw   '1'
+	movwf   GATELOW_FLAG	
+	
+TestGateEnd:
+	movlb	D'0' ; Bank 0
+
 ;	
 ;   Begin bank switched code
 ;
@@ -676,45 +669,10 @@ ILContinue:	;process EG0 or EG1
 
 ;	
 ; Test the GATE and TRIGGER Pins for changes
-;--------------------------------------------
-; The logic here is straight-forward. If the Trigger goes high, the envelope
-; starts an attack. If the Gate goes low, it starts a release.
-	
-;TestTrigger:
-;	btfsc	BSR,1		    ; see if we are in bank 2 (0x02 = b'00000010')
-;	goto	TestTrigger1	    ; if so, service trigger 1
-;	; Has TRIGGER changed?
-;	btfss	TRIG_CHANGED
-;	goto	TestGate
-;
-;	; TRIGGER has changed, but has it gone high?
-;; Z209 - we need to reverse this cuz my hardware inverts the gate input
-;;	btfss	TRIGGER
-;	btfsc	TRIGGER
-;	goto	TestGate			; No, so skip
-;	movf	BSR,w			; this bank "preservation" works
-;	movlb	D'0' ; Bank 0
-;	bcf	GATE_LED0		; gate ON = cut off LED ;bsf	GATE_LED0
-;	movwf	BSR
-;	goto	StartEnvelope
-;	
-;TestTrigger1:
-;	btfss	TRIG1_CHANGED
-;	goto	TestGate
-;
-;	; TRIGGER has changed, but has it gone high?
-;; Z209 - we need to reverse this cuz my hardware inverts the gate input
-;;	btfss	TRIGGER
-;	btfsc	TRIGGER1
-;	goto	TestGate		; No, so skip
-;	movf	BSR,w			; this bank "preservation" works
-;	movlb	D'0' ; Bank 0
-;	bcf	GATE_LED1		; gate ON = cut off LED ;bsf	GATE_LED1
-;	movwf	BSR
-
+;see above
 ;test results of trigger evaluation
-	btfss   TRIGGERHIGH_FLAG,0	;if bit 0 is clear, skip over StartEnvelope
-	goto	TestGate
+	btfss   TRIGGERHIGH_FLAG,0	;if bit 0 is set, flow thru to StartEnvelope
+	goto	TestGateLow
 	
 StartEnvelope:
 ; If TRIGGER has gone high, change to ATTACK stage
@@ -732,38 +690,9 @@ StartEnvelope:
 	movwf	STAGE
 	goto	GenerateEnvelope	
 
-TestGate:
-	btfsc	BSR,1		    ; see if we are in bank 2 (0x02 = b'00000010')
-	goto	TestGate1	    ; if so, service gate 1
-	
-	; Has GATE changed?
-	btfss	GATE_CHANGED
+TestGateLow:
+	btfss   GATELOW_FLAG,0	;if bit 0 is set, flow thru to EndEnvelope
 	goto	GenerateEnvelope
-	
-	; GATE has changed, but has it gone low?
-; Z209 - we need to reverse this cuz my hardware inverts the gate input
-;	btfsc	GATE
-	btfss	GATE
-	goto	GenerateEnvelope	; No, so skip
-	movf	BSR,w			; this bank "preservation" works
-	movlb	D'0' ; Bank 0
-	bsf	GATE_LED0		; gate OFF = cut on LED ;bcf	GATE_LED0
-	movwf	BSR
-	goto	EndEnvelope
-TestGate1:
-	; Has GATE changed?
-	btfss	GATE1_CHANGED
-	goto	GenerateEnvelope
-	
-	; GATE has changed, but has it gone low?
-; Z209 - we need to reverse this cuz my hardware inverts the gate input
-;	btfsc	GATE
-	btfss	GATE1
-	goto	GenerateEnvelope	; No, so skip
-	movf	BSR,w			; this bank "preservation" works
-	movlb	D'0' ; Bank 0
-	bsf	GATE_LED1		; gate ON = cut off LED ;bcf	GATE_LED1
-	movwf	BSR
 	
 EndEnvelope:
 ; If GATE has gone low, change to RELEASE stage
