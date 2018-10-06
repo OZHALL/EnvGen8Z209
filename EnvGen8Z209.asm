@@ -110,6 +110,9 @@
 ;                 interrupt routine.  Now the "slow fader response" is better.
 ;                 there is still a delay, but at 39 Hz, the faders do actually respond.
 ;
+;                 Moved the trigger processing code to the beginning.  
+;                 Fader response may be better, it appears to be functionally correct.
+;
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -324,11 +327,7 @@
 	ATTACK_CV					; These first four aren't actually used any more
 	DECAY_CV					; Instead we find a PHASE INC value and use that
 	SUSTAIN_CV
-	RELEASE_CV
-;	ATTACK1_CV					; These first four aren't actually used any more
-;	DECAY1_CV					; Instead we find a PHASE INC value and use that
-;	SUSTAIN1_CV
-;	RELEASE1_CV		
+	RELEASE_CV		
 	; The working storage for the interpolation subroutine
 	INPUT_X_HI					; Two inputs, X and Y
 	INPUT_X_LO
@@ -352,11 +351,12 @@
 	PREV_WORK_HI
 	PREV_WORK_LO
 	DUMMYVAR                                        ;note: something was overwriting the file register here
-	                                                ; adding this dummy variable just masks that issue
+	                                                ; adding this dummy variable just masks that issue					
   ENDC
 ;   these are used only by Delay1Sec which is called by PartyLights before the main loop
 ;   the bank does not really matter, as long as they are out of the way of other variables
-  CBLOCK 0x05D
+  CBLOCK 0x05C
+	TRIGGERHIGH_FLAG				; a flag indicating that the trigger has just gone high	
 	TEMP_2
 	TEMP_3
 	TEMP64			    ; only used by TestTakeover
@@ -591,14 +591,72 @@ TMR2ISR:
 	movwf	TEMP_W_INTR  
 	; Update the changes to the keyboard state
 	xorwf	STATES, f
+	movlw   '0'
+	movwf   TRIGGERHIGH_FLAG		; reset flag
 	movf    STATES,w                        ; get result back into W
 	; store these same values in bank 2
 	movlb	D'2' ; Bank 2
 	movwf   STATES
 	movf    TEMP_W_INTR,w
 	movwf   CHANGES
+	movlw   '0'
+	movwf   TRIGGERHIGH_FLAG		; reset flag
 	movlb	D'0' ; Bank 0
 	
+;	
+; Test the GATE and TRIGGER Pins for changes
+;--------------------------------------------
+; The logic here is straight-forward. If the Trigger goes high, the envelope
+; starts an attack. If the Gate goes low, it starts a release.
+	
+TestTrigger:
+;	btfsc	BSR,1		    ; see if we are in bank 2 (0x02 = b'00000010')
+;	goto	TestTrigger1	    ; if so, service trigger 1
+	; Has TRIGGER changed? EG0
+	btfss	TRIG_CHANGED
+;	goto	TestGate
+	goto    TestTrigger1	    ; has not changed, check EG1 trigger
+
+	; TRIGGER has changed, but has it gone high?
+; Z209 - we need to reverse this cuz my hardware inverts the gate input
+;	btfss	TRIGGER
+	btfsc	TRIGGER
+;	goto	TestGate			; No, so skip
+	goto    TestTrigger1
+;	movf	BSR,w			; this bank "preservation" works
+;	movlb	D'0' ; Bank 0
+	bcf	GATE_LED0		; gate ON = cut off LED ;bsf	GATE_LED0
+;	movwf	BSR
+;	goto	StartEnvelope
+        ;set variable to indicate that we need to go to StartEnvelope
+	movlw   '1'
+	movwf   TRIGGERHIGH_FLAG
+	
+TestTrigger1:
+	movlb	D'2' ; Bank 2
+	btfss	TRIG1_CHANGED
+;	goto	TestGate
+	goto	TestTriggerEnd
+
+	; TRIGGER has changed, but has it gone high?
+; Z209 - we need to reverse this cuz my hardware inverts the gate input
+;	btfss	TRIGGER
+	btfsc	TRIGGER1
+;	goto	TestGate		; No, so skip
+	goto	TestTriggerEnd
+	movf	BSR,w			; this bank "preservation" works
+	movlb	D'0' ; Bank 0
+	bcf	GATE_LED1		; gate ON = cut off LED ;bsf	GATE_LED1
+	movwf	BSR
+;	goto	StartEnvelope
+        ;set variable to indicate that we need to go to StartEnvelope
+	movlw   '1'
+	movwf   TRIGGERHIGH_FLAG
+	
+TestTriggerEnd:
+	movlb	D'0' ; Bank 0
+	
+;	
 ;   Begin bank switched code
 ;
 ;default - DAC0
@@ -616,82 +674,47 @@ ILContinue:	;process EG0 or EG1
 	btfsc	LFO_MODE
 	goto	GenerateEnvelope
 
-;;---------------------------------------------------------
-;;	Test and debounce the digital inputs
-;;---------------------------------------------------------
-;; Do Scott Dattalo's vertical counter debounce (www.dattalo.com)
-;; This could debounce eight inputs, but I'm using only two:
-;; RC0 Trigger/Gate
-;; RC1 Trigger/Gate
-;	
-;; Z209 consolidate Gate & Trigger & use RC0 for channel 0, RC1 for channel 1
-;	
-;	; First, increment the debounce counters
-;	movfw	DEBOUNCE_LO	
-;	xorwf	DEBOUNCE_HI, f		; HI+ = HI XOR LO
-;	comf	DEBOUNCE_LO, f		; LO+ = ~LO
-;	; See if any changes occured
-;	movf	BSR,w			; this bank "preservation" while accessing PORTC works, but uses 6 cycles
-;	movwf	TEMP_BSR_INTR
-;	movlb	D'0' ; Bank 0
-;	movfw	PORTC				; Get current data from GATE & TRIG inputs
-;	movwf	TEMP_W_INTR
-;	movf	TEMP_BSR_INTR,w
-;	movwf	BSR
-;	movfw	TEMP_W_INTR
-;	xorwf	STATES, w			; Find the changes
-;	; Reset counters where no change occured
-;	andwf	DEBOUNCE_LO, f
-;	andwf	DEBOUNCE_HI, f
-;	; If there is a pending change and the count has rolled over,
-;	; then the key has been debounced
-;	xorlw	D'255'				; Invert the changes
-;	iorwf	DEBOUNCE_HI, w		; If count is 0, both
-;	iorwf	DEBOUNCE_LO, w		; HI and LO are 0
-;	; Any bit in W that is clear at this point means that the
-;	; input has changed and the count rolled over.
-;	xorlw	D'255'
-;	; Now a 1 in W represents a 'switch just changed'
-;	movwf	CHANGES				; Store the changes
-;	; Update the changes to the keyboard state
-;	xorwf	STATES, f
 ;	
 ; Test the GATE and TRIGGER Pins for changes
 ;--------------------------------------------
 ; The logic here is straight-forward. If the Trigger goes high, the envelope
 ; starts an attack. If the Gate goes low, it starts a release.
 	
-TestTrigger:
-	btfsc	BSR,1		    ; see if we are in bank 2 (0x02 = b'00000010')
-	goto	TestTrigger1	    ; if so, service trigger 1
-	; Has TRIGGER changed?
-	btfss	TRIG_CHANGED
-	goto	TestGate
+;TestTrigger:
+;	btfsc	BSR,1		    ; see if we are in bank 2 (0x02 = b'00000010')
+;	goto	TestTrigger1	    ; if so, service trigger 1
+;	; Has TRIGGER changed?
+;	btfss	TRIG_CHANGED
+;	goto	TestGate
+;
+;	; TRIGGER has changed, but has it gone high?
+;; Z209 - we need to reverse this cuz my hardware inverts the gate input
+;;	btfss	TRIGGER
+;	btfsc	TRIGGER
+;	goto	TestGate			; No, so skip
+;	movf	BSR,w			; this bank "preservation" works
+;	movlb	D'0' ; Bank 0
+;	bcf	GATE_LED0		; gate ON = cut off LED ;bsf	GATE_LED0
+;	movwf	BSR
+;	goto	StartEnvelope
+;	
+;TestTrigger1:
+;	btfss	TRIG1_CHANGED
+;	goto	TestGate
+;
+;	; TRIGGER has changed, but has it gone high?
+;; Z209 - we need to reverse this cuz my hardware inverts the gate input
+;;	btfss	TRIGGER
+;	btfsc	TRIGGER1
+;	goto	TestGate		; No, so skip
+;	movf	BSR,w			; this bank "preservation" works
+;	movlb	D'0' ; Bank 0
+;	bcf	GATE_LED1		; gate ON = cut off LED ;bsf	GATE_LED1
+;	movwf	BSR
 
-	; TRIGGER has changed, but has it gone high?
-; Z209 - we need to reverse this cuz my hardware inverts the gate input
-;	btfss	TRIGGER
-	btfsc	TRIGGER
-	goto	TestGate			; No, so skip
-	movf	BSR,w			; this bank "preservation" works
-	movlb	D'0' ; Bank 0
-	bcf	GATE_LED0		; gate ON = cut off LED ;bsf	GATE_LED0
-	movwf	BSR
-	goto	StartEnvelope
-	
-TestTrigger1:
-	btfss	TRIG1_CHANGED
+;test results of trigger evaluation
+	btfss   TRIGGERHIGH_FLAG,0	;if bit 0 is clear, skip over StartEnvelope
 	goto	TestGate
-
-	; TRIGGER has changed, but has it gone high?
-; Z209 - we need to reverse this cuz my hardware inverts the gate input
-;	btfss	TRIGGER
-	btfsc	TRIGGER1
-	goto	TestGate		; No, so skip
-	movf	BSR,w			; this bank "preservation" works
-	movlb	D'0' ; Bank 0
-	bcf	GATE_LED1		; gate ON = cut off LED ;bsf	GATE_LED1
-	movwf	BSR
 	
 StartEnvelope:
 ; If TRIGGER has gone high, change to ATTACK stage
