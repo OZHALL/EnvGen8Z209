@@ -556,99 +556,69 @@ TMR2ISR:
 ; starts an attack. If the Gate goes low, it starts a release.
 	
 TestTrigger:
-;	btfsc	BSR,1		    ; see if we are in bank 2 (0x02 = b'00000010')
-;	goto	TestTrigger1	    ; if so, service trigger 1
 	; Has TRIGGER changed? EG0
 	btfss	TRIG_CHANGED
-;	goto	TestGate
-	goto    TestTrigger1	    ; has not changed, check EG1 trigger
+	goto	TestGate
 
 	; TRIGGER has changed, but has it gone high?
 ; Z209 - we need to reverse this cuz my hardware inverts the gate input
 ;	btfss	TRIGGER
 	btfsc	TRIGGER
-;	goto	TestGate			; No, so skip
-	goto    TestTrigger1
-;	movf	BSR,w			; this bank "preservation" works
-;	movlb	D'0' ; Bank 0
+	goto	TestGate			; No, so skip
 	bcf	GATE_LED0		; gate ON = cut off LED ;bsf	GATE_LED0
-;	movwf	BSR
-;	goto	StartEnvelope
         ;set variable to indicate that we need to go to StartEnvelope
 	movlw   '1'
 	movwf   TRIGGERHIGH_FLAG
-	
-TestTrigger1:
-	movlb	D'2' ; Bank 2
-	btfss	TRIG1_CHANGED
-;	goto	TestGate
-	goto	TestTriggerEnd
-
-	; TRIGGER has changed, but has it gone high?
-; Z209 - we need to reverse this cuz my hardware inverts the gate input
-;	btfss	TRIGGER
-	btfsc	TRIGGER1
-;	goto	TestGate		; No, so skip
-	goto	TestTriggerEnd
-	movf	BSR,w			; this bank "preservation" works
-	movlb	D'0' ; Bank 0
-	bcf	GATE_LED1		; gate ON = cut off LED ;bsf	GATE_LED1
-	movwf	BSR
-;	goto	StartEnvelope
-        ;set variable to indicate that we need to go to StartEnvelope
-	movlw   '1'
-	movwf   TRIGGERHIGH_FLAG
-	
-TestTriggerEnd:
-	movlb	D'0' ; Bank 0
-
+	goto    TestGateEnd
 TestGate:
-;	btfsc	BSR,1		    ; see if we are in bank 2 (0x02 = b'00000010')
-;	goto	TestGate1	    ; if so, service gate 1
-	
 	; Has GATE changed?
 	btfss	GATE_CHANGED
-;	goto	GenerateEnvelope
-	goto    TestGate1	    ; has not changed, check EG1 gate
+	goto    TestGateEnd	    ; has not changed, check EG1 trigger
 	
 	; GATE has changed, but has it gone low?
 ; Z209 - we need to reverse this cuz my hardware inverts the gate input
 ;	btfsc	GATE
 	btfss	GATE
-;	goto	GenerateEnvelope	; No, so skip
-	goto    TestGate1
-;	movf	BSR,w			; this bank "preservation" works
-;	movlb	D'0' ; Bank 0
+	goto    TestGateEnd		; No, so skip
 	bsf	GATE_LED0		; gate OFF = cut on LED ;bcf	GATE_LED0
-;	movwf	BSR
-;	goto	EndEnvelope
 	movlw	'1'
 	movwf	GATELOW_FLAG
+TestGateEnd:
+    
+TestTrigger1:
+	btfss	TRIG1_CHANGED
+	goto	TestGate1
+
+	; TRIGGER has changed, but has it gone high?
+; Z209 - we need to reverse this cuz my hardware inverts the gate input
+;	btfss	TRIGGER
+	btfsc	TRIGGER1
+	goto	TestGate1		; No, so skip
+	bcf	GATE_LED1		; gate ON = cut off LED ;bsf	GATE_LED1
+        ;set variable to indicate that we need to go to StartEnvelope
+	movlb	D'2' ; Bank 2
+	movlw   '1'
+	movwf   TRIGGERHIGH_FLAG
+	goto    TestGate1End
 	
 TestGate1:
-	movlb	D'2' ; Bank 2
 	; Has GATE changed?
 	btfss	GATE1_CHANGED
-;	goto	GenerateEnvelope
-	goto    TestGateEnd
+	goto    TestGate1End
 	
 	; GATE has changed, but has it gone low?
 ; Z209 - we need to reverse this cuz my hardware inverts the gate input
 ;	btfsc	GATE
-	btfss	GATE1
-;	goto	GenerateEnvelope	; No, so skip
-	goto	TestGateEnd
-	movf	BSR,w			; this bank "preservation" works
-	movlb	D'0' ; Bank 0
+	btfss	GATE1	
+	goto	TestGate1End		; No, so skip
 	bsf	GATE_LED1		; gate ON = cut off LED ;bcf	GATE_LED1
-	movwf	BSR
         ;set variable to indicate that we need to go to EndEnvelope
+	movlb	D'2' ; Bank 2
 	movlw   '1'
-	movwf   GATELOW_FLAG	
+	movwf   GATELOW_FLAG
 	
-TestGateEnd:
+TestGate1End:
 	movlb	D'0' ; Bank 0
-
 ;	
 ;   Begin bank switched code
 ;
