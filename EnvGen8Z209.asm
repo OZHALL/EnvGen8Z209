@@ -118,6 +118,11 @@
 ;
 ;2018-10-07 ozh - fix a bug in the "skip if previous" logic
 ;
+;		    reconfirmed we have the fastest usable SPI clock settings.
+;
+; firmware revision (1.3)
+;
+
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -3165,6 +3170,7 @@ Init_SPI2:
 	movlw 0x2A	;SSPM FOSC/4_SSPxADD; Fosc/(4*(SSPxADD+1))
 ;	movlw 0x22	;SSPM - Fosc/64 - This is next to fastest clock! 
 ;	movlw 0x21	;SSPM Fosc/16 (2Mhz)	- works.  No need to set SSP2ADD if we use this
+;	movlw 0x30	;SSPM - Fosc/4 - test only - too fast, does not work
 	movwf SSP2CON1	
 ;   
 ;    // SSPADD 24; 
