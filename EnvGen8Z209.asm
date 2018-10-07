@@ -116,7 +116,7 @@
 ;                 Moved the gate processing code to the beginning.  
 ;                 Fader response may be better, it appears to be functionally correct.
 ;
-;2018-10-07 ozh - fix the bug that was hanging the Fader Response
+;2018-10-07 ozh - fix a bug in the "skip if previous" logic
 ;
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
@@ -2205,6 +2205,7 @@ Main:
 ; this setup works, but I have tweaked it in init_ADCC:
 	movlb	D'1'				; Bank 1 
 	movlw	B'00000010'			; ADACQ = 0x02;
+	movlw	B'00000111'			; ADACQ = 0x07;
 	movwf	ADACQ
 	; set up the A/D clock
 	movlw	B'00000111'			; ADCCS FOSC/16 0x07
