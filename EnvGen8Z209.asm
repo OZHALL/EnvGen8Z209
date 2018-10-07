@@ -116,6 +116,8 @@
 ;                 Moved the gate processing code to the beginning.  
 ;                 Fader response may be better, it appears to be functionally correct.
 ;
+;2018-10-07 ozh - fix the bug that was hanging the Fader Response
+;
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -525,7 +527,7 @@ TMR2ISR:
 	xorlw	D'255'
 	; Now a 1 in W represents a 'switch just changed'
 	movwf	CHANGES				; Store the changes
-	movwf	TEMP_W_INTR  
+	movwf	TEMP_W_INTR                     ; save for the store below
 	; Update the changes to the keyboard state
 	xorwf	STATES, f
 	movlw   '0'
@@ -539,7 +541,7 @@ TMR2ISR:
 	movf    TEMP_W_INTR,w
 	movwf   CHANGES
 	movlw   '0'
-	movwf   TRIGGERHIGH_FLAG		; reset flag
+	movwf   TRIGGERHIGH_FLAG		; reset flag - bank 2
 	movwf   GATELOW_FLAG
 	movlb	D'0' ; Bank 0
 	
@@ -574,7 +576,7 @@ TestGate:
 ;	btfsc	GATE
 	btfss	GATE
 	goto    TestGateEnd		; No, so skip
-	bsf	GATE_LED0		; gate OFF = cut on LED ;bcf	GATE_LED0
+	bsf	GATE_LED0		; gate OFF = cut on LED 
 	movlw	'1'
 	movwf	GATELOW_FLAG
 TestGateEnd:
@@ -588,11 +590,12 @@ TestTrigger1:
 ;	btfss	TRIGGER
 	btfsc	TRIGGER1
 	goto	TestGate1		; No, so skip
-	bcf	GATE_LED1		; gate ON = cut off LED ;bsf	GATE_LED1
+	bcf	GATE_LED1		; gate ON = cut off LED 
         ;set variable to indicate that we need to go to StartEnvelope
 	movlb	D'2' ; Bank 2
 	movlw   '1'
 	movwf   TRIGGERHIGH_FLAG
+	movlb	D'0' ; Bank 0
 	goto    TestGate1End
 	
 TestGate1:
@@ -610,19 +613,20 @@ TestGate1:
 	movlb	D'2' ; Bank 2
 	movlw   '1'
 	movwf   GATELOW_FLAG
-	
+	movlb	D'0' ; Bank 0	
 TestGate1End:
-	movlb	D'0' ; Bank 0
+
 ;----------------------------------	
 ;   Begin bank switched code
 ;----------------------------------
 ;default - DAC0
-	movlw	DAC0		;start with DAC0 ;DAC1;
+	movlw	DAC0		;start with DAC0 ;
 	bcf	DAC_NUMBER,7    ; clear bit 7 of DAC_NUMBER 
 IntLoop:
 	btfss	WREG,7		; check DAC0 or DAC1
 	goto	ILContinue	; if bit 7 was set, this goto gets skipped
 	; set up for DAC1
+	movlw	DAC1		;start with DAC1 ;
 	movlb	D'2'		; Bank 2 - EG1 (128 byte banks)
 	bsf	DAC_NUMBER,7     ; set bit 7 of DAC_NUMBER 
 ILContinue:	;process EG0 or EG1
@@ -735,7 +739,6 @@ NextStage:
 ;	btfss	ZERO			; Is STAGE==2 yet? (PUNCH)
 ;	goto	NormalEnvelope          ; no
 ;	incf	STAGE, f		; yes - Move directly to Decay
-;	movf	STAGE, w		; We're about to examine what STAGE we're on 
 ;	goto	SelectStage
 TestPunch:
 ; Do we use the Punch stage?
@@ -754,7 +757,7 @@ SkipPunch:
 	movf	STAGE, w		; We're about to examine what STAGE we're on
 	xorlw	D'2'
 	btfss	ZERO			; Is STAGE==2 yet? (PUNCH)
-	goto	TestLooping
+	goto	TestLooping		; no, so skip over next statement
 	incf	STAGE, f		; Move directly to Decay
 	goto	SelectStage
 	
@@ -980,7 +983,7 @@ DACOutput:
 ;   this performance logic works, we do need it 
 	; see if the values WREG and Previous HI values are the same
 	clrf	TEMP_W_INTR
-	xorwf	PREV_WORK_HI,0	   ; compare the two if same, XOR results in 0
+	xorwf	PREV_WORK_HI,0	   ; compare the two if same, XOR results in 0 (W)
 	movwf	TEMP_W_INTR
 	
 	; now process LO
@@ -988,12 +991,12 @@ DACOutput:
 	movwf	WORK_LO
 	
 	; see if the values WREG and Previous LO values are the same
-	xorwf	PREV_WORK_LO	   ; compare the two if same, XOR results in 0
+	xorwf	PREV_WORK_LO,0	   ; compare the two if same, XOR results in 0 (W)
 	; now include the results of the HI test
 	iorwf	TEMP_W_INTR,0	    ; ,0 = results into W     
 	; bail out if current & previous values are the same for both HI and LO
-	btfsc    STATUS,Z
-	goto     InterruptExit
+	btfsc    STATUS,Z           ;if ZERO status is clear (compare NOT equal), skip next
+	goto     InterruptExit      ;ZERO status is set (equal), bail
 	
 	; update previous values
 	movf	WORK_HI,w
