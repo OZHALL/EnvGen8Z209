@@ -980,7 +980,7 @@ DACOutput:
 	movwf	WORK_HI
 
 ;Performance Logic
-;   this performance logic works, we do need it 
+;   this performance logic works, we DO need it to maximize the non-interrupt time
 	; see if the values WREG and Previous HI values are the same
 	clrf	TEMP_W_INTR
 	xorwf	PREV_WORK_HI,0	   ; compare the two if same, XOR results in 0 (W)
@@ -1014,11 +1014,9 @@ DACOutput:
 	lsrf	WORK_HI, f  
 	rrf	WORK_LO, f  
 
-;	movlw DAC0	; TODO: change this hardcoded DAC0 to a variable
-;        ; pass in the DAC # (in bit 7) via 
-;	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
-;        movwf DAC_NUMBER   
-	
+;-------------------------
+; Begin actual DAC output
+;-------------------------	
 	; output the WORK_HI and WORK_LO to the DAC# (0 or 1) specified in W
 	movlb D'0'		; PORTB
 	bcf   NOT_CS	; Take ~CS Low
