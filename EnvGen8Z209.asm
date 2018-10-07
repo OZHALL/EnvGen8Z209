@@ -509,15 +509,8 @@ TMR2ISR:
 	xorwf	DEBOUNCE_HI, f		; HI+ = HI XOR LO
 	comf	DEBOUNCE_LO, f		; LO+ = ~LO
 	; See if any changes occured
-	; bank preservation not needed.  We're in bank 1 only
-;	movf	BSR,w			; this bank "preservation" while accessing PORTC works, but uses 6 cycles
-;	movwf	TEMP_BSR_INTR
-;	movlb	D'0' ; Bank 0
+	; bank preservation not needed.  We're in bank 0 only
 	movfw	PORTC				; Get current data from GATE & TRIG inputs
-;	movwf	TEMP_W_INTR
-;	movf	TEMP_BSR_INTR,w
-;	movwf	BSR
-;	movfw	TEMP_W_INTR
 	xorwf	STATES, w			; Find the changes
 	; Reset counters where no change occured
 	andwf	DEBOUNCE_LO, f
@@ -540,6 +533,7 @@ TMR2ISR:
 	movwf   GATELOW_FLAG
 	movf    STATES,w                        ; get result back into W
 	; store these same values in bank 2
+	; note: we may not need these values in Bank 2, (except for the FLAGs)
 	movlb	D'2' ; Bank 2
 	movwf   STATES
 	movf    TEMP_W_INTR,w
@@ -619,9 +613,9 @@ TestGate1:
 	
 TestGate1End:
 	movlb	D'0' ; Bank 0
-;	
+;----------------------------------	
 ;   Begin bank switched code
-;
+;----------------------------------
 ;default - DAC0
 	movlw	DAC0		;start with DAC0 ;DAC1;
 	bcf	DAC_NUMBER,7    ; clear bit 7 of DAC_NUMBER 
@@ -632,11 +626,9 @@ IntLoop:
 	movlb	D'2'		; Bank 2 - EG1 (128 byte banks)
 	bsf	DAC_NUMBER,7     ; set bit 7 of DAC_NUMBER 
 ILContinue:	;process EG0 or EG1
-    
 	; If we're in LFO mode, we can ignore the GATE and TRIGGER inputs
 	btfsc	LFO_MODE
 	goto	GenerateEnvelope
-
 ;	
 ; Test the GATE and TRIGGER Pins for changes
 ;see above
@@ -679,7 +671,6 @@ EndEnvelope:
 	movlw	D'5'
 	movwf	STAGE
 
-
 GenerateEnvelope:
 ; Do we need to increment the phase accumulator?
 ; If so, what FSR offset should we use?
@@ -709,7 +700,6 @@ GetDecayOffset:
 GetReleaseOffset:
 	movlw	#RELEASE_INC_LO
 	
-
 ; Increment the phase accumulator PHASE (24+20 bit addition)
 IncrementPhase:
 	movwf	FSR1L				; Store offset
@@ -736,6 +726,17 @@ NextStage:
 	; ..then increment the STAGE
 	incf	STAGE, f
 
+;-----
+; Z209 - for now, skip Punch/Loop/LFO logic
+;---
+	; this is buggy!
+;	movf	STAGE, w		; We're about to examine what STAGE we're on
+;	xorlw	D'2'
+;	btfss	ZERO			; Is STAGE==2 yet? (PUNCH)
+;	goto	NormalEnvelope          ; no
+;	incf	STAGE, f		; yes - Move directly to Decay
+;	movf	STAGE, w		; We're about to examine what STAGE we're on 
+;	goto	SelectStage
 TestPunch:
 ; Do we use the Punch stage?
 ;	Z209 - hard code Punch usage
