@@ -91,9 +91,9 @@
 ;2018-07-28 ozh - double the Decay and Release times
 ;2018-07-28 ozh - added DUMMYVAR cuz something was overwriting "TIME_CV" at that location
 ;2018-07-29 ozh - TIME_CV is still getting corrupted (for EG1), so I've replaced 
-;   movfw   TIME_CV
+;   movf   TIME_CV,w
 ;with
-;   movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
+;   movlw 0    ;movf TIME_CV,w  ; TODO fix cause of this
 ; this does not fix the underlying issue, but it destroys the symptom
 ;
 ;2018-08-01 ozh - now that the TIME_CV is fixed, I have commented out the "double D & R time" patch.  
@@ -119,6 +119,12 @@
 ;2018-10-07 ozh - fix a bug in the "skip if previous" logic
 ;
 ;		    reconfirmed we have the fastest usable SPI clock settings.
+;
+;2018-10-09 ozh - Change PR2 Timer2 period register 0x21.  Sample rate 15.2 kHz  
+;		    This is the minimum for fully responsive faders.
+;		    Without the "skip output if no change" logic, min was 0x27 12.8 kHZ
+;
+;2018-10-09 ozh - Updated tables (thanks Tom W.) for new 12.8kHz sample rate
 ;
 ; firmware revision (1.3)
 ;
@@ -512,12 +518,12 @@ TMR2ISR:
 ; Z209 consolidate Gate & Trigger & use RC0 for channel 0, RC1 for channel 1
 	
 	; First, increment the debounce counters
-	movfw	DEBOUNCE_LO	
+	movf	DEBOUNCE_LO,w	
 	xorwf	DEBOUNCE_HI, f		; HI+ = HI XOR LO
 	comf	DEBOUNCE_LO, f		; LO+ = ~LO
 	; See if any changes occured
 	; bank preservation not needed.  We're in bank 0 only
-	movfw	PORTC				; Get current data from GATE & TRIG inputs
+	movf	PORTC,w				; Get current data from GATE & TRIG inputs
 	xorwf	STATES, w			; Find the changes
 	; Reset counters where no change occured
 	andwf	DEBOUNCE_LO, f
@@ -987,28 +993,28 @@ DACOutput:
 ;Performance Logic
 ;   this performance logic works, we DO need it to maximize the non-interrupt time
 	; see if the values WREG and Previous HI values are the same
-	clrf	TEMP_W_INTR
-	xorwf	PREV_WORK_HI,0	   ; compare the two if same, XOR results in 0 (W)
-	movwf	TEMP_W_INTR
-	
-	; now process LO
-	movf	OUTPUT_LO,w
-	movwf	WORK_LO
-	
-	; see if the values WREG and Previous LO values are the same
-	xorwf	PREV_WORK_LO,0	   ; compare the two if same, XOR results in 0 (W)
-	; now include the results of the HI test
-	iorwf	TEMP_W_INTR,0	    ; ,0 = results into W     
-	; bail out if current & previous values are the same for both HI and LO
-	btfsc    STATUS,Z           ;if ZERO status is clear (compare NOT equal), skip next
-	goto     InterruptExit      ;ZERO status is set (equal), bail
-	
-	; update previous values
-	movf	WORK_HI,w
-	movwf	PREV_WORK_HI
-	movf	WORK_LO,w
-	movwf	PREV_WORK_LO
-
+;	clrf	TEMP_W_INTR
+;	xorwf	PREV_WORK_HI,0	   ; compare the two if same, XOR results in 0 (W)
+;	movwf	TEMP_W_INTR
+;	
+;	; now process LO
+;	movf	OUTPUT_LO,w
+;	movwf	WORK_LO
+;	
+;	; see if the values WREG and Previous LO values are the same
+;	xorwf	PREV_WORK_LO,0	   ; compare the two if same, XOR results in 0 (W)
+;	; now include the results of the HI test
+;	iorwf	TEMP_W_INTR,0	    ; ,0 = results into W     
+;	; bail out if current & previous values are the same for both HI and LO
+;	btfsc    STATUS,Z           ;if ZERO status is clear (compare NOT equal), skip next
+;	goto     InterruptExit      ;ZERO status is set (equal), bail
+;	
+;	; update previous values
+;	movf	WORK_HI,w
+;	movwf	PREV_WORK_HI
+;	movf	WORK_LO,w
+;	movwf	PREV_WORK_LO
+;
 	;clrc	don't need it	    ; clear carry flag = 0 
 	lsrf	WORK_HI, f  ; move lsb into carry
 	rrf	WORK_LO, f  ; move carry into msb and lsb into carry	
@@ -1121,7 +1127,7 @@ I2C1Isr:
 	bcf	PIR3,0		; bit 0 SSP1IF
 	movlb	D'3'
 ;    i2c_data        = SSP1BUF;  // read SSPBUF to clear BF
-	movfw	SSP1BUF
+	movf	SSP1BUF,w
 	movwf	i2c_data
 
 ;    if(1 == SSP1STATbits.R_nW)
@@ -1166,7 +1172,7 @@ SSP1STATWrite:
 SSP1STATWriteData:
 ;    {
 ;        I2C1_slaveWriteData   = i2c_data;
-	movfw	i2c_data
+	movf	i2c_data,w
 	movwf	I2C1_slaveWriteData
 ;
 ;        // callback routine should process I2C1_slaveWriteData from the master
@@ -1269,14 +1275,14 @@ I2C1SWC_Addr:
 
 ;                    // this is a pointer byte with info on what to do next                    
 ;                    inPointerByte=I2C1_slaveWriteData;
-	movfw	I2C1_slaveWriteData
+	movf	I2C1_slaveWriteData,w
 	movwf	inPointerByte
 ;                    // parse the pointer byte
 ;                    wkPBAddr=inPointerByte & 0x0F;// mask out the mode (if any)
 	andlw	0x0F
 	movwf	wkPBAddr
 ;                    wkPBMode=inPointerByte & 0xF0;// mask out the address (if any)
-	movfw	inPointerByte	
+	movf	inPointerByte,w	
 	andlw	0xF0
 	movwf	wkPBMode
 ;                    // verify that this is a write LED or Fader Mode write request
@@ -1290,7 +1296,7 @@ I2C1SWC_Addr:
 ;                    }else{
 NotModeWriteLED:
 ;                        if(wkPBMode==cModeWriteADC){
-	movfw	wkPBMode	
+	movf	wkPBMode,w	
 	xorlw	cModeWriteADC
 	bnz	NotModeWriteADC		
 ;                            iFaderBytesChangedCount=0;
@@ -1302,7 +1308,7 @@ NotModeWriteLED:
 NotModeWriteADC:	
 ;                            // perhaps this makes does not sense at all because it is a subcase of "slaveWriteType" - IDK
 ;                            if(wkPBMode==cModeReadADC){
-	movfw	wkPBMode	
+	movf	wkPBMode,w	
 	xorlw	cModeReadADC
 	bnz	I2C1SWCExit	
 ;                                faderNumber=0;  //  assigning this does not work!: wkPBAddr;  // start with this fader #
@@ -1321,15 +1327,15 @@ I2C1SWC_Normal:
 ;                    // the master has written data to store in the "model"
 ;                    // my hack ozh
 ;                    if(wkPBMode==cModeWriteLED){  
-	movfw	wkPBMode	
+	movf	wkPBMode,w	
 	xorlw	cModeWriteLED
 	bnz	SWCNNotModeWriteLED   
 ;                        if(0 == iLEDBytesChangedCount)
 ;                        {
-	movfw	iLEDBytesChangedCount
+	movf	iLEDBytesChangedCount,w
 	bnz	SWCNLEDChanged 
 ;                            MSByteLED=I2C1_slaveWriteData;
-	movfw	I2C1_slaveWriteData
+	movf	I2C1_slaveWriteData,w
 	movwf	MSByteLED
 ;                            iLEDBytesChangedCount++;
 	incf	iLEDBytesChangedCount,1	    ; 1 = results to file 
@@ -1337,7 +1343,7 @@ I2C1SWC_Normal:
 ;                        }else{
 SWCNLEDChanged:
 ;                            LSByteLED=I2C1_slaveWriteData;
-	movfw	I2C1_slaveWriteData
+	movf	I2C1_slaveWriteData,w
 	movwf	LSByteLED	
 	
 ;                            iLEDBytesChangedCount++;
@@ -1349,12 +1355,12 @@ SWCNLEDChanged:
 ;                    }else{
 SWCNNotModeWriteLED:
 ;                        if (wkPBMode==cModeWriteADC){
-	movfw	wkPBMode	
+	movf	wkPBMode,w	
 	xorlw	cModeWriteADC
 	bnz	I2C1SWCExit	
 ;                            // todo: toggle pins to show activity
 ;                            if(0 == iFaderBytesChangedCount++){
-	movfw	iFaderBytesChangedCount	
+	movf	iFaderBytesChangedCount,w
 	bnz	SWCIncFaderChange	
 ;                                faderNumber=0;
 	clrf faderNumber
@@ -1371,13 +1377,13 @@ SWCIncFaderChange:
 	movlw   #BYTE_FADER_VALUE   ; 
 	addwf	faderNumber,0	    ; get the index to the array - result in W
 	movwf	FSR1L
-	movfw	I2C1_slaveWriteData
+	movf	I2C1_slaveWriteData,w
 	movwi   0[INDF1]	    ; put the value to that location	
 ;                                PREV_BYTE_FADER_VALUE[faderNumber]=BYTE_FADER_VALUE[faderNumber]; // update the prev
 	movlw   #PREV_BYTE_FADER_VALUE   ; 
 	addwf	faderNumber,0	    ; get the index to the array - result in W
 	movwf	FSR1L
-	movfw	I2C1_slaveWriteData
+	movf	I2C1_slaveWriteData,w
 	movwi   0[INDF1]	    ; put the value to that location
 ;   only do the following code once for the 8 bytes
 	movf	faderNumber,w
@@ -1385,7 +1391,7 @@ SWCIncFaderChange:
 ;                                bFaderTakeoverFlag[faderNumber]=false
 	clrf	FaderTakeoverFlags		    ; we should be getting all 8 faders, so set them all
 
-	movfw	BSR
+	movf	BSR,w
 	movwf	TEMP_BSR_INTR
 	movlb	D'3'
 	movlw	0xFF
@@ -1394,7 +1400,7 @@ SWCIncFaderChange:
 	movwf	LSByteLED
 	movwf	MSByteLED
 	call	UpdateLEDs	    ; BSR will be D'0' on exit from this routine	
-	movfw	TEMP_BSR_INTR
+	movf	TEMP_BSR_INTR,w
 	movwf	BSR
 ;                            }
 I2C1SWCIncFader:
@@ -1461,7 +1467,7 @@ I2C1SCEXIT:
 ;	movf	BSR,w			; this bank "preservation" while accessing PORTC works, it is expensive
 ;	movwf	TEMP_BSR_INTR
 ;	movlb	D'3'			; faderNumber is in bank 3
-;	movfw	faderNumber
+;	movf	faderNumber,w
 ;	movlb	D'0'	    ; adjust bank for ADSR2
 ;	brw
 ;	goto	Attack1
@@ -1473,32 +1479,32 @@ I2C1SCEXIT:
 ;	goto	Sustain2
 ;	goto	Release2
 ;Attack1:
-;	movfw	ATTACK_CV
+;	movf	ATTACK_CV,w
 ;	goto	MBFVContinue
 ;Decay1:
-;	movfw	DECAY_CV
+;	movf	DECAY_CV,w
 ;	goto	MBFVContinue
 ;Sustain1:
-;	movfw	SUSTAIN_CV
+;	movf	SUSTAIN_CV,w
 ;	goto	MBFVContinue
 ;Release1:
-;	movfw	RELEASE_CV
+;	movf	RELEASE_CV,w
 ;	goto	MBFVContinue
 ;Attack2:
 ;	movlb	D'2'
-;	movfw	ATTACK_CV
+;	movf	ATTACK_CV,w
 ;	goto	MBFVContinue
 ;Decay2:
 ;    	movlb	D'2'
-;	movfw	DECAY_CV
+;	movf	DECAY_CV,w
 ;	goto	MBFVContinue
 ;Sustain2:
 ;    	movlb	D'2'
-;	movfw	SUSTAIN_CV
+;	movf	SUSTAIN_CV,w
 ;	goto	MBFVContinue
 ;Release2:
 ;    	movlb	D'2'
-;	movfw	RELEASE_CV
+;	movf	RELEASE_CV,w
 ;	goto	MBFVContinue
 ;MBFVContinue:
 ;	movlb	D'3'		    ; back to bank 3
@@ -1507,7 +1513,7 @@ I2C1SCEXIT:
 ;	movlw   #BYTE_FADER_VALUE   ; 
 ;	addwf	faderNumber,0	    ; get the index to the array - result in W
 ;	movwf	FSR1L
-;	movfw	TEMP_W_INTR
+;	movf	TEMP_W_INTR,w
 ;	movwi   0[INDF1]	    ; put the value to that location 
 ;	; restore BSR
 ;	movf	TEMP_BSR_INTR,w
@@ -1529,12 +1535,12 @@ SetActive:
 	movf	TEMP_BSR,w	    	; restore BSR
 	movwf	BSR
 TstTkOvrExit:
-	movfw	TEMP		    ; restore W
+	movf	TEMP,w		    ; restore W
 	return
 ; set the takeover flag based on the value of the ADC_CHANNEL
 SetTakeoverFlag:
 	movlb	D'3'
-	movfw	ADC_CHANNEL
+	movf	ADC_CHANNEL,w
 	brw				; Computed branch
 	goto	STF0
 	goto	STF1
@@ -1628,10 +1634,10 @@ STFExit:
 
 UpdateLEDs:
 	movlb	D'0'			; bank 0
-	movfw   LATB
+	movf   LATB,w
 	movwf	TEMP_W_INTR		; build the new LATB value in a variable
 	movlb	D'30'
-	movfw	ODCONB
+	movf	ODCONB,w
 	movwf	TEMP_INTR		; build the new ODCONB value in a variable
 	movlb	D'3'			; back to bank 3 for xSByteLED variable
 
@@ -1685,19 +1691,19 @@ UpdateLEDs:
 ;   at this point we're done with PORTB and ODCONB, update them
 	movlb	D'0'		    ; bank 0
 	; that's all on PORTB, do the update
-	movfw	TEMP_W_INTR
+	movf	TEMP_W_INTR,w
 	movwf	LATB
 	; ODCONB
 	movlb	D'30'
-	movfw	TEMP_INTR
+	movf	TEMP_INTR,w
 	movwf	ODCONB
 
 ;   service last three LEDs on PORTC/ODCONC
 	movlb	D'0'
-	movfw   LATC
+	movf   LATC,w
 	movwf	TEMP_W_INTR		; build the new LATC value in a variable
 	movlb	D'30'
-	movfw	ODCONC
+	movf	ODCONC,w
 	movwf	TEMP_INTR		; build the new ODCONC value in a variable
 	
 	movlb	D'3'			; back to bank 3 for xSByteLED variable
@@ -1732,11 +1738,11 @@ UpdateLEDs:
 ;   at this point we're done with PORTC and ODCONC, update them
 	movlb	D'0'		    ; bank 0
 	; that's all on PORTC, do the update
-	movfw	TEMP_W_INTR
+	movf	TEMP_W_INTR,w
 	movwf	LATC
 	; ODCONC
 	movlb	D'30'
-	movfw	TEMP_INTR
+	movf	TEMP_INTR,w
 	movwf	ODCONC
 	movlb	D'0'
     return
@@ -2114,23 +2120,23 @@ PartyLights:
 	movlw	0x01	;start with the lowest one
 	movwf	LATB	; turn on first LED
 	call	Delay1Sec
-	movfw	LATB
+	movf	LATB,w
 	lslf	LATB,1
 
 	call	Delay1Sec
-	movfw	LATB
+	movf	LATB,w
 	lslf	LATB,1
 	
 	call	Delay1Sec
-	movfw	LATB
+	movf	LATB,w
 	lslf	LATB,1
 
 	call	Delay1Sec
-	movfw	LATB
+	movf	LATB,w
 	lslf	LATB,1
 
 	call	Delay1Sec
-	movfw	LATB
+	movf	LATB,w
 	lslf	LATB,1
 
 	movlw	B'11100000'
@@ -2139,15 +2145,15 @@ PartyLights:
 	movlw	BIT5	;start with the next 
 	movwf	LATC	; turn on first LED
 	call	Delay1Sec
-	movfw	LATC
+	movf	LATC,w
 	lslf	LATC,1
 
 	call	Delay1Sec
-	movfw	LATC
+	movf	LATC,w
 	lslf	LATC,1
 	
 	call	Delay1Sec
-	movfw	LATC
+	movf	LATC,w
 	lslf	LATC,1
 	
 	call	Delay1Sec
@@ -2201,7 +2207,10 @@ Main:
 	movwf	T2CON					
 ;	movlw	0x1F				; Set up Timer2 period register (/32) (0.5/32 = 15625KHz
 ;	movlw	0x15				; Set up Timer2 period register (43 us = c.23250 KHz)  WORKS!  (0x14 does NOT).
-	movlw	0x16				; Set up Timer2 period register slow it down a notch so that we never overrun
+;	movlw	0x16				; Set up Timer2 period register slow it down a notch so that we never overrun
+;at 0x20, fader always work, but with a slight delay at 40 Hz clock rate
+;	movlw	0x21				; Set up Timer2 period register 0x21 15.1kHz- faders fully responsive with the "skip output if no change" logic
+	movlw	0x27                            ; Set up Timer2 period register 0x27 12.8kHz- faders fully responsive without the "skip output if no change" logi
 	; T2PR = 28Dh same as PR2
 	movwf	PR2				; Interrupts at 1MHz/32 = 31.25KHz
 
@@ -2363,7 +2372,7 @@ MainLoop:
 ;   "Arbiter" code to be sure that a "write" from Master (the programmer - e.g. MatrixSwitch)
 ;	is not instantly replaced by the next fader read.   Fader must "take over"	
 ;	movlb	D'3'		    ; FaderTakeoverFlags in bank 3
-;	movfw	ADC_CHANNEL
+;	movf	ADC_CHANNEL
 ;	brw
 ;	goto	FTOF0
 ;	goto	FTOF1
@@ -2474,13 +2483,13 @@ A0Active:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'0'		    ; Attack 0
 	movwf	FSR0L
-	movfw	ADC_VALUE	    ; get the new value
+	movf	ADC_VALUE,w	    ; get the new value
 	movwi	0[INDF0]	    ; update model value for this fader from W
 	
 A0CalcInc:
 	movlb	D'0'
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
-	movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
+	movlw 0    ;movf TIME_CV,w  ; TODO fix cause of this
 	subwf	ADC_VALUE, w   ;  ATTACK_CV, w
 	btfss	BORROW
 	movlw	D'0'				; If value is <0, use minimum
@@ -2524,13 +2533,13 @@ A1Active:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'4'		    ; Attack 1
 	movwf	FSR0L
-	movfw	ADC_VALUE	    ; get the new value
+	movf	ADC_VALUE,w	    ; get the new value
 	movwi	0[INDF0]	    ; update model value for this fader from W
 
 A1CalcInc:
 	movlb	D'2'		; Bank 2
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
-	movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
+	movlw 0    ;movf TIME_CV,w  ; TODO fix cause of this
 	subwf	ADC_VALUE, w
 	btfss	BORROW
 	movlw	D'0'				; If value is <0, use minimum
@@ -2577,13 +2586,13 @@ D0Active:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'1'		    ; Decay 0
 	movwf	FSR0L
-	movfw	ADC_VALUE	    ; get the new value
+	movf	ADC_VALUE,w	    ; get the new value
 	movwi	0[INDF0]	    ; update model value for this fader from W
 
 D0CalcInc:
 	movlb	D'0'
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
-	movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
+	movlw 0    ;movf TIME_CV,w  ; TODO fix cause of this
 	subwf	ADC_VALUE, w
 	btfss	BORROW
 	movlw	D'0'				; If value is <0, use minimum
@@ -2630,13 +2639,13 @@ D1Active:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'5'		    ; Decay 1
 	movwf	FSR0L
-	movfw	ADC_VALUE	    ; get the new value
+	movf	ADC_VALUE,w	    ; get the new value
 	movwi	0[INDF0]	    ; update model value for this fader from W
 
 D1CalcInc:
 	movlb	D'2'		; Bank 2
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
-	movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
+	movlw 0    ;movf TIME_CV,w  ; TODO fix cause of this
 	subwf	ADC_VALUE, w
 	btfss	BORROW											    
 	movlw	D'0'				; If value is <0, use minimum
@@ -2691,7 +2700,7 @@ S0Active:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'2'		    ; Sustain 0
 	movwf	FSR0L
-	movfw	ADC_VALUE	    ; get the new value
+	movf	ADC_VALUE,w	    ; get the new value
 	movwi	0[INDF0]	    ; update model value for this fader from W
 	;This works to stabilize the sustain.  It will never reach completely 100%, only 0xFE
 	andlw	b'11111110'	    ; mask out the bottom bit for more stability
@@ -2731,7 +2740,7 @@ S1Active:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'6'		    ; Sustain 1
 	movwf	FSR0L
-	movfw	ADC_VALUE	    ; get the new value
+	movf	ADC_VALUE,w	    ; get the new value
 	movwi	0[INDF0]	    ; update model value for this fader from W
 	;This works to stabilize the sustain.  It will never reach completely 100%, only 0xFE
 	andlw	b'11111110'	    ; mask out the bottom bit for more stability
@@ -2770,13 +2779,13 @@ R0Active:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'3'		    ; Release 0
 	movwf	FSR0L
-	movfw	ADC_VALUE	    ; get the new value
+	movf	ADC_VALUE,w	    ; get the new value
 	movwi	0[INDF0]	    ; update model value for this fader from W
 
 R0CalcInc:
 	movlb	D'0'
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
-	movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
+	movlw 0    ;movf TIME_CV,w  ; TODO fix cause of this
 	subwf	ADC_VALUE, w
 	btfss	BORROW
 	movlw	D'0'				; If value is <0, use minimum
@@ -2824,13 +2833,13 @@ R1Active:
 	movlw	#BYTE_FADER_VALUE   ; model array
 	addlw	D'7'		    ; Release 1
 	movwf	FSR0L
-	movfw	ADC_VALUE	    ; get the new value
+	movf	ADC_VALUE,w	    ; get the new value
 	movwi	0[INDF0]	    ; update model value for this fader from W
 
 R1CalcInc:
 	movlb	D'2'		; Bank 2
 	; Subtract the TIME_CV (Increasing TIME_CV shortens the Env)
-	movlw 0    ;movfw TIME_CV  ; TODO fix cause of this
+	movlw 0    ;movf TIME_CV,w  ; TODO fix cause of this
 	subwf	ADC_VALUE, w
 	btfss	BORROW
 	movlw	D'0'				; If value is <0, use minimum
@@ -3133,7 +3142,7 @@ Init_I2C:
 	; now restore bank
 	movf	TEMP_BSR,w
 	movwf	BSR		;restore bank
-	movfw	TEMP		;restore W
+	movf	TEMP,w		;restore W
         ;
 	movwf	SSP1ADD
 ;    // clear the slave interrupt flag
@@ -3226,117 +3235,117 @@ Init_Osc:
  org     0x600					; Need to start at 0x100 boundary
 ; these three tables are recreated (thx Tom W.) for a 22kHz vs 31.125kHz interrupt (sample) rate`
 ControlLookupHi:
-	dt	D'16', D'14', D'13', D'13', D'12', D'11', D'10', D'10'
-	dt	D'9', D'9', D'8', D'8', D'7', D'7', D'7', D'6'
-	dt	D'6', D'6', D'5', D'5', D'5', D'5', D'4', D'4'
-	dt	D'4', D'4', D'4', D'4', D'3', D'3', D'3', D'3'
-	dt	D'3', D'3', D'3', D'2', D'2', D'2', D'2', D'2'
-	dt	D'2', D'2', D'2', D'2', D'2', D'2', D'1', D'1'
-	dt	D'1', D'1', D'1', D'1', D'1', D'1', D'1', D'1'
-	dt	D'1', D'1', D'1', D'1', D'1', D'1', D'1', D'1'
+    dt    D'28', D'26', D'24', D'23', D'21', D'20', D'19', D'18'
+    dt    D'17', D'16', D'15', D'14', D'13', D'13', D'12', D'11'
+    dt    D'11', D'10', D'10', D'9', D'9', D'9', D'8', D'8'
+    dt    D'8', D'7', D'7', D'7', D'6', D'6', D'6', D'6'
+    dt    D'5', D'5', D'5', D'5', D'5', D'4', D'4', D'4'
+    dt    D'4', D'4', D'3', D'3', D'3', D'3', D'3', D'3'
+    dt    D'3', D'3', D'2', D'2', D'2', D'2', D'2', D'2'
+    dt    D'2', D'2', D'2', D'2', D'2', D'2', D'1', D'1'
 
-	dt	D'1', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'1', D'1', D'1', D'1', D'1', D'1', D'1', D'1'
+    dt    D'1', D'1', D'1', D'1', D'1', D'1', D'1', D'1'
+    dt    D'1', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
 
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
 
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
 
 
 ControlLookupMid:
-	dt	D'23', D'246', D'244', D'14', D'62', D'130', D'215', D'59'
-	dt	D'172', D'40', D'174', D'61', D'213', D'115', D'25', D'196'
-	dt	D'116', D'42', D'228', D'162', D'99', D'41', D'241', D'189'
-	dt	D'139', D'91', D'46', D'4', D'219', D'180', D'143', D'108'
-	dt	D'75', D'42', D'12', D'238', D'210', D'183', D'157', D'133'
-	dt	D'109', D'86', D'64', D'44', D'23', D'4', D'241', D'224'
-	dt	D'206', D'190', D'174', D'159', D'144', D'130', D'116', D'103'
-	dt	D'90', D'78', D'66', D'55', D'44', D'33', D'23', D'13'
+    dt    D'134', D'134', D'189', D'37', D'181', D'103', D'56', D'35'
+    dt    D'37', D'59', D'99', D'156', D'226', D'54', D'149', D'255'
+    dt    D'114', D'237', D'113', D'252', D'142', D'38', D'195', D'102'
+    dt    D'14', D'186', D'106', D'30', D'214', D'145', D'80', D'18'
+    dt    D'214', D'157', D'103', D'51', D'1', D'209', D'163', D'119'
+    dt    D'77', D'37', D'254', D'217', D'181', D'147', D'114', D'83'
+    dt    D'52', D'23', D'251', D'223', D'197', D'172', D'148', D'125'
+    dt    D'102', D'80', D'60', D'39', D'20', D'1', D'239', D'222'
 
-	dt	D'4', D'251', D'242', D'234', D'225', D'217', D'210', D'202'
-	dt	D'195', D'189', D'182', D'176', D'169', D'163', D'158', D'152'
-	dt	D'147', D'142', D'137', D'132', D'127', D'123', D'119', D'114'
-	dt	D'110', D'106', D'103', D'99', D'96', D'92', D'89', D'86'
-	dt	D'83', D'80', D'77', D'74', D'72', D'69', D'67', D'64'
-	dt	D'62', D'60', D'58', D'56', D'54', D'52', D'50', D'48'
-	dt	D'46', D'45', D'43', D'42', D'40', D'39', D'37', D'36'
-	dt	D'35', D'33', D'32', D'31', D'30', D'29', D'28', D'27'
+    dt    D'205', D'189', D'173', D'158', D'144', D'130', D'116', D'103'
+    dt    D'91', D'79', D'67', D'56', D'45', D'34', D'24', D'14'
+    dt    D'5', D'252', D'243', D'234', D'226', D'218', D'211', D'203'
+    dt    D'196', D'189', D'183', D'176', D'170', D'164', D'158', D'153'
+    dt    D'147', D'142', D'137', D'132', D'128', D'123', D'119', D'114'
+    dt    D'110', D'107', D'103', D'99', D'96', D'92', D'89', D'86'
+    dt    D'83', D'80', D'77', D'74', D'72', D'69', D'67', D'64'
+    dt    D'62', D'60', D'58', D'56', D'54', D'52', D'50', D'48'
 
-	dt	D'26', D'25', D'24', D'23', D'22', D'22', D'21', D'20'
-	dt	D'19', D'19', D'18', D'17', D'17', D'16', D'15', D'15'
-	dt	D'14', D'14', D'13', D'13', D'12', D'12', D'11', D'11'
-	dt	D'11', D'10', D'10', D'9', D'9', D'9', D'8', D'8'
-	dt	D'8', D'7', D'7', D'7', D'7', D'6', D'6', D'6'
-	dt	D'6', D'5', D'5', D'5', D'5', D'5', D'4', D'4'
-	dt	D'4', D'4', D'4', D'4', D'3', D'3', D'3', D'3'
-	dt	D'3', D'3', D'3', D'3', D'2', D'2', D'2', D'2'
+    dt    D'46', D'45', D'43', D'41', D'40', D'39', D'37', D'36'
+    dt    D'35', D'33', D'32', D'31', D'30', D'29', D'28', D'27'
+    dt    D'26', D'25', D'24', D'23', D'22', D'21', D'21', D'20'
+    dt    D'19', D'18', D'18', D'17', D'16', D'16', D'15', D'15'
+    dt    D'14', D'14', D'13', D'13', D'12', D'12', D'11', D'11'
+    dt    D'10', D'10', D'10', D'9', D'9', D'9', D'8', D'8'
+    dt    D'8', D'7', D'7', D'7', D'7', D'6', D'6', D'6'
+    dt    D'6', D'5', D'5', D'5', D'5', D'5', D'4', D'4'
 
-	dt	D'2', D'2', D'2', D'2', D'2', D'2', D'2', D'1'
-	dt	D'1', D'1', D'1', D'1', D'1', D'1', D'1', D'1'
-	dt	D'1', D'1', D'1', D'1', D'1', D'1', D'1', D'1'
-	dt	D'1', D'1', D'1', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
-	dt	D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'4', D'4', D'4', D'4', D'3', D'3', D'3', D'3'
+    dt    D'3', D'3', D'3', D'3', D'2', D'2', D'2', D'2'
+    dt    D'2', D'2', D'2', D'2', D'2', D'2', D'2', D'1'
+    dt    D'1', D'1', D'1', D'1', D'1', D'1', D'1', D'1'
+    dt    D'1', D'1', D'1', D'1', D'1', D'1', D'1', D'1'
+    dt    D'1', D'1', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
+    dt    D'0', D'0', D'0', D'0', D'0', D'0', D'0', D'0'
 
 
 ControlLookupLo:
-	dt	D'117', D'69', D'224', D'83', D'161', D'148', D'133', D'69'
-	dt	D'0', D'45', D'127', D'216', D'71', D'247', D'50', D'90'
-	dt	D'225', D'79', D'54', D'54', D'250', D'54', D'164', D'9'
-	dt	D'44', D'220', D'234', D'47', D'133', D'202', D'222', D'165'
-	dt	D'4', D'228', D'47', D'207', D'178', D'198', D'251', D'66'
-	dt	D'141', D'206', D'249', D'3', D'225', D'137', D'242', D'18'
-	dt	D'226', D'89', D'112', D'33', D'99', D'51', D'136', D'94'
-	dt	D'176', D'120', D'178', D'89', D'104', D'221', D'178', D'228'
+    dt    D'224', D'55', D'234', D'49', D'0', D'160', D'97', D'97'
+    dt    D'101', D'179', D'253', D'73', D'232', D'101', D'124', D'18'
+    dt    D'48', D'253', D'184', D'184', D'100', D'54', D'180', D'113'
+    dt    D'11', D'43', D'127', D'190', D'167', D'253', D'137', D'24'
+    dt    D'123', D'136', D'23', D'4', D'45', D'116', D'186', D'230'
+    dt    D'222', D'140', D'216', D'176', D'255', D'180', D'191', D'15'
+    dt    D'151', D'71', D'18', D'238', D'205', D'164', D'106', D'20'
+    dt    D'153', D'240', D'17', D'243', D'142', D'221', D'214', D'117'
 
-	dt	D'112', D'81', D'134', D'10', D'219', D'246', D'87', D'254'
-	dt	D'230', D'14', D'115', D'20', D'237', D'253', D'67', D'187'
-	dt	D'101', D'62', D'69', D'120', D'214', D'94', D'13', D'226'
-	dt	D'221', D'251', D'60', D'158', D'32', D'193', D'128', D'92'
-	dt	D'84', D'104', D'149', D'219', D'57', D'175', D'60', D'222'
-	dt	D'150', D'98', D'65', D'52', D'57', D'79', D'119', D'175'
-	dt	D'247', D'79', D'181', D'42', D'172', D'60', D'217', D'130'
-	dt	D'55', D'248', D'196', D'155', D'124', D'104', D'93', D'91'
+    dt    D'178', D'136', D'240', D'230', D'100', D'101', D'227', D'220'
+    dt    D'73', D'39', D'114', D'37', D'62', D'184', D'144', D'194'
+    dt    D'76', D'42', D'89', D'215', D'161', D'179', D'13', D'170'
+    dt    D'137', D'167', D'2', D'153', D'104', D'111', D'170', D'25'
+    dt    D'186', D'138', D'136', D'179', D'9', D'137', D'49', D'255'
+    dt    D'243', D'11', D'70', D'162', D'31', D'188', D'118', D'78'
+    dt    D'66', D'82', D'124', D'191', D'27', D'142', D'24', D'184'
+    dt    D'110', D'56', D'22', D'8', D'11', D'33', D'72', D'127'
 
-	dt	D'99', D'115', D'140', D'173', D'214', D'6', D'62', D'124'
-	dt	D'194', D'14', D'97', D'185', D'24', D'124', D'230', D'85'
-	dt	D'201', D'66', D'192', D'67', D'202', D'85', D'229', D'120'
-	dt	D'15', D'170', D'73', D'235', D'144', D'57', D'229', D'148'
-	dt	D'69', D'250', D'177', D'106', D'38', D'229', D'166', D'105'
-	dt	D'46', D'246', D'191', D'139', D'88', D'39', D'248', D'202'
-	dt	D'159', D'116', D'75', D'36', D'254', D'218', D'182', D'148'
-	dt	D'115', D'84', D'53', D'24', D'252', D'224', D'198', D'172'
+    dt    D'199', D'30', D'132', D'249', D'123', D'11', D'168', D'81'
+    dt    D'7', D'200', D'148', D'108', D'78', D'57', D'47', D'46'
+    dt    D'54', D'71', D'97', D'131', D'172', D'221', D'22', D'85'
+    dt    D'156', D'232', D'60', D'149', D'245', D'90', D'196', D'52'
+    dt    D'169', D'35', D'162', D'37', D'173', D'57', D'201', D'93'
+    dt    D'245', D'145', D'48', D'211', D'121', D'34', D'207', D'126'
+    dt    D'48', D'229', D'157', D'87', D'20', D'211', D'149', D'88'
+    dt    D'30', D'230', D'176', D'124', D'74', D'25', D'234', D'189'
 
-	dt	D'148', D'124', D'102', D'80', D'58', D'38', D'18', D'255'
-	dt	D'237', D'219', D'202', D'186', D'170', D'155', D'140', D'126'
-	dt	D'112', D'99', D'86', D'74', D'62', D'51', D'40', D'29'
-	dt	D'19', D'9', D'0', D'246', D'238', D'229', D'221', D'213'
-	dt	D'205', D'198', D'191', D'184', D'177', D'171', D'165', D'159'
-	dt	D'153', D'148', D'142', D'137', D'132', D'128', D'123', D'119'
-	dt	D'114', D'110', D'106', D'103', D'99', D'95', D'92', D'89'
-	dt	D'85', D'82', D'79', D'77', D'74', D'71', D'69', D'66'
+    dt    D'146', D'104', D'64', D'25', D'243', D'207', D'172', D'138'
+    dt    D'106', D'74', D'44', D'15', D'243', D'216', D'190', D'165'
+    dt    D'141', D'117', D'95', D'73', D'52', D'32', D'12', D'249'
+    dt    D'231', D'214', D'197', D'181', D'165', D'150', D'135', D'121'
+    dt    D'108', D'95', D'82', D'70', D'58', D'47', D'36', D'26'
+    dt    D'16', D'6', D'253', D'243', D'235', D'226', D'218', D'210'
+    dt    D'203', D'196', D'189', D'182', D'175', D'169', D'163', D'157'
+    dt    D'151', D'146', D'141', D'136', D'131', D'126', D'122', D'117'
 
 
 
