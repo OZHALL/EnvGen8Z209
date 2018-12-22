@@ -128,7 +128,10 @@
 ;
 ; firmware revision (1.3)
 ;
-
+;2018-12-22 ozh - add comments to outline logic for entering "options" such as
+;		  reverse bright/dim, punch, looping
+;                 none of this functionality has been implemented yet
+;
 ;"Never do single bit output operations on PORTx, use LATx 
 ;   instead to avoid the Read-Modify-Write (RMW) effects"
 ;
@@ -2093,6 +2096,9 @@ Delay1Sec:
           goto          $-1
           decfsz          TEMP_2,f
           goto          $-3
+	  ; check Gate 2 to see if it is ON
+	  ; (re)set ChangeOptionFlag - Gate is reversed, so pressed=0.   
+	  ; OR GATE2 and the flag - if it is ever 1 (unpressed), it will stay 1
           decfsz          TEMP_3,f
           goto          $-5
           return
@@ -2161,6 +2167,23 @@ PartyLights:
 	movlw	B'00011111'
 	andwf	LATC,1		;,1 means save back to file register
 	return
+; at boot time, allow some options (e.g. bright/dim, Punch, etc) to be changed
+ChangeOptions:
+	; options are mapped as follows
+	; A - n/a
+	; D - Punch Flag ( LED indicates state )
+	; S - Loop Flag  ( LED indicates state ) 
+	; R - Bright/Dim Flag ( LED indicates Bright )
+
+	; 1) display current state, based on OptionFlags
+	; options apply to both ADSRs, so turn off the LEDs for ADSR1
+	; 2) read D/S/R Faders on ADSR0 
+	; 3) (re)set OptionFlags based on bit 7 of fader values
+	; 4) check GATE2 going back to unpressed (1)
+	;    loop if while pressed (0) 
+	; 6) save OptionFlags to EEPROM
+	; 7) return
+	return	
 ;----------------------------------------
 ;	The main program
 ; This reads the A/D channels and provides
@@ -2178,7 +2201,14 @@ Main:
 ;	bcf	GATE_LED1
 ;	nop
 	; end test
+	; read OptionFlags from EEProm
+	; ChangeOptions - test for Gate2 on during PartyLights
+	; set default to "no change"
+	; ChangeOptionFlag = 0     - Gate is reversed, so pressed=0, init to pressed
 	call	PartyLights
+	; ChangeOptionFlag - test for Gate2 on (i.e. value=0) during PartyLights
+	; if ChangeOptionFlag = 0 (pressed the whole time), then process Option Change
+	; call ChangeOptions
 ;	call	TestLights
 	call	PartyLights
 ;	call	PartyLights
@@ -2372,7 +2402,7 @@ MainLoop:
 ;   "Arbiter" code to be sure that a "write" from Master (the programmer - e.g. MatrixSwitch)
 ;	is not instantly replaced by the next fader read.   Fader must "take over"	
 ;	movlb	D'3'		    ; FaderTakeoverFlags in bank 3
-;	movf	ADC_CHANNEL
+;	movf	ADC_CHANNEL,w
 ;	brw
 ;	goto	FTOF0
 ;	goto	FTOF1
