@@ -444,8 +444,12 @@
 ; Note I use the debounced variables, not the input directly
 ;Z209 defines
 ;If you're doing a read-modify-write (for example a BSF), you generally want to use the LATCH.
-#define GATE_LED0 LATB,0	; 
+#define GATE_LED0 LATB,0 
+#define GATE_LED0_OD ODCONB,0 
 #define GATE_LED1 LATB,4
+#define GATE_LED1_OD ODCONB,4
+#define GATE_LED7 LATC,7
+#define GATE_LED7_OD ODCONC,7
 #define LEDLAST	  LATC,7  ; last LED on pin 7 of port C
  
 
@@ -575,7 +579,14 @@ TestTrigger:
 ;	btfss	TRIGGER
 	btfsc	TRIGGER
 	goto	TestGate			; No, so skip
-	bcf	GATE_LED0		; gate ON = cut off LED ;bsf	GATE_LED0
+;	bcf	GATE_LED0		; gate ON = cut off LED ;bsf	GATE_LED0
+	bsf	GATE_LED7		; gate ON = cut ON LED, Bright
+	bsf	GATE_LED0		; gate ON = cut ON LED, Bright
+
+	movlb	D'30'
+	bcf	GATE_LED7_OD		; set Open Drain off for Bit 0
+	bcf	GATE_LED0_OD		; set Open Drain off for Bit 0
+	movlb	D'0'
         ;set variable to indicate that we need to go to StartEnvelope
 	movlw   '1'
 	movwf   TRIGGERHIGH_FLAG
@@ -590,7 +601,13 @@ TestGate:
 ;	btfsc	GATE
 	btfss	GATE
 	goto    TestGateEnd		; No, so skip
-	bsf	GATE_LED0		; gate OFF = cut on LED 
+;	bsf	GATE_LED0		; gate OFF = cut on LED 
+	bsf	GATE_LED7		; gate OFF = DIM LED (ON=1, Bright=0)
+	bsf	GATE_LED0		; gate OFF = DIM LED (ON=1, Bright=0)
+	movlb	D'30'
+	bsf	GATE_LED7_OD		; set Open Drain on for Bit 0 (OD on = DIM)
+	bsf	GATE_LED0_OD		; set Open Drain on for Bit 0 (OD on = DIM)
+	movlb	D'0'
 	movlw	'1'
 	movwf	GATELOW_FLAG
 TestGateEnd:
@@ -605,6 +622,7 @@ TestTrigger1:
 	btfsc	TRIGGER1
 	goto	TestGate1		; No, so skip
 	bcf	GATE_LED1		; gate ON = cut off LED 
+;	call TestLights ; test only - this WORKS!!!
         ;set variable to indicate that we need to go to StartEnvelope
 	movlb	D'2' ; Bank 2
 	movlw   '1'
@@ -1526,6 +1544,9 @@ I2C1SCEXIT:
 ; see if the ADC_VALUE is within range.  Divide each value by 4 & if equal, takeover 
 ; if so, set the takeover flag for the ADC_CHANNEL
 TestTakeover:
+    ;test only
+    return
+    ;test only
 	movwf	TEMP		    ; model value to be compared
 	lsrf	WREG,w
 	lsrf	WREG,w
@@ -2205,15 +2226,16 @@ Main:
 	; ChangeOptions - test for Gate2 on during PartyLights
 	; set default to "no change"
 	; ChangeOptionFlag = 0     - Gate is reversed, so pressed=0, init to pressed
-	call	PartyLights
+;test only	call	PartyLights
 	; ChangeOptionFlag - test for Gate2 on (i.e. value=0) during PartyLights
 	; if ChangeOptionFlag = 0 (pressed the whole time), then process Option Change
 	; call ChangeOptions
 ;	call	TestLights
-	call	PartyLights
+;test only	call	PartyLights
 ;	call	PartyLights
 	movlb	D'3'
 	movlw	LEDALLONBRIGHT
+	movlw	LEDALLONDIM
 	movwf	LSByteLED
 	movwf	MSByteLED
 	call	UpdateLEDs
@@ -2369,11 +2391,11 @@ Main:
 	movlw	0xFF		    ; set the takeover flags to 1 (active)
 	movwf	FaderTakeoverFlags
 	clrf	FaderFirstTimeFlags
-	
-	movlw	LEDALLONBRIGHT
-	movwf	LSByteLED
-	movwf	MSByteLED
-	call	UpdateLEDs
+; we've already done this above	
+;	movlw	LEDALLONBRIGHT
+;	movwf	LSByteLED
+;	movwf	MSByteLED
+;	call	UpdateLEDs
 	clrf	BYTE_FADER_VALUE
 	clrf	0x61
 	clrf	0x62
@@ -2942,7 +2964,7 @@ Init_Ports:
 	clrf ODCONA ;    ODCONA = 0x00;
 	clrf ODCONB ;    ODCONB = 0x00;
 	clrf ODCONC ;    ODCONC = 0x00;   
-	
+
 ;   preserve the GIE state - global interrupt enable
 ;    bool state = (unsigned char)GIE;
 	movf  INTCON,w
